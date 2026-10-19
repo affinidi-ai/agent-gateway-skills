@@ -1,0 +1,11 @@
+Show the current login session and connected gateway
+
+Usage: fabric agent-gateway whoami [OPTIONS]
+
+Options:
+  -c, --connection <CONNECTION>  Named gateway connection. On `login` this names the connection being saved; on commands that talk to a gateway it selects which saved connection to use [env: FABRIC_CONNECTION=]
+      --host <HOST>              Override the configured gateway host for this command [env: FABRIC_HOST=]
+      --token <TOKEN>            Override the configured bearer token for this command [env: FABRIC_TOKEN]
+      --allow-http               Allow a plain http:// host that is not localhost. The session token is sent unencrypted, so only use this on a network you trust
+  -o, --output <OUTPUT>          Output format for commands that return data [default: table] [possible values: json, table]
+  -h, --help                     Print help

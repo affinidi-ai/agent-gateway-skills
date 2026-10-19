@@ -1,0 +1,42 @@
+Authenticate and save a named gateway connection.
+
+Opens a browser to complete the gateway's passkey or SSO login and captures the token automatically. Use --paste, --token-stdin, or FABRIC_TOKEN to supply a token manually instead.
+
+Usage: fabric agent-gateway login [OPTIONS]
+
+Options:
+  -c, --connection <CONNECTION>
+          Named gateway connection. On `login` this names the connection being saved; on commands that talk to a gateway it selects which saved connection to use
+          
+          [env: FABRIC_CONNECTION=]
+
+      --host <HOST>
+          Gateway origin, for example https://gateway.example.com
+          
+          [env: FABRIC_HOST=]
+
+      --token-stdin
+          Read the bearer token from standard input
+
+      --paste
+          Paste a bearer token manually instead of using the browser login
+
+      --allow-http
+          Allow a plain http:// host that is not localhost. The session token is sent unencrypted, so only use this on a network you trust
+
+      --token <TOKEN>
+          Bearer token produced by the existing passkey or SSO login
+          
+          [env: FABRIC_TOKEN]
+
+  -o, --output <OUTPUT>
+          Output format for commands that return data
+          
+          [default: table]
+          [possible values: json, table]
+
+      --pat [<PAT>]
+          Authenticate with a personal access token (agpat_...) instead of the browser login. Combine with --token-stdin to supply it non-interactively, or set FABRIC_PAT once --pat is passed
+
+  -h, --help
+          Print help (see a summary with '-h')

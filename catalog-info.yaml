@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: agent-gateway-skills
+  description: Agent skill for operating an Affinidi Agent Gateway with the fabric CLI.
+  tags:
+    - agent-skill
+    - documentation
+spec:
+  type: documentation
+  lifecycle: experimental
+  owner: octo
+  system: affinidi-trust-fabric

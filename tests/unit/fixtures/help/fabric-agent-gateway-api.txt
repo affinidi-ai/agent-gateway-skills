@@ -1,0 +1,17 @@
+Call any authenticated management API endpoint
+
+Usage: fabric agent-gateway api [OPTIONS] <METHOD> <PATH>
+
+Arguments:
+  <METHOD>  [possible values: get, post, put, patch, delete]
+  <PATH>    API path such as /v1/limits
+
+Options:
+  -c, --connection <CONNECTION>  Named gateway connection. On `login` this names the connection being saved; on commands that talk to a gateway it selects which saved connection to use [env: FABRIC_CONNECTION=]
+      --data <DATA>              Inline JSON request body
+  -f, --file <FILE>              JSON request body file. Use '-' for standard input
+      --host <HOST>              Override the configured gateway host for this command [env: FABRIC_HOST=]
+      --token <TOKEN>            Override the configured bearer token for this command [env: FABRIC_TOKEN]
+      --allow-http               Allow a plain http:// host that is not localhost. The session token is sent unencrypted, so only use this on a network you trust
+  -o, --output <OUTPUT>          Output format for commands that return data [default: table] [possible values: json, table]
+  -h, --help                     Print help

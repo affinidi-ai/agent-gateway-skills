@@ -1,0 +1,17 @@
+{
+  "name": "affinidi-agent-gateway-skills",
+  "owner": {
+    "name": "Affinidi"
+  },
+  "metadata": {
+    "description": "Affinidi's agent skill for operating an Affinidi Agent Gateway with the fabric CLI."
+  },
+  "plugins": [
+    {
+      "name": "affinidi-agent-gateway",
+      "version": "0.1.0",
+      "source": "./",
+      "description": "Configure, verify and debug an Affinidi Agent Gateway with the fabric CLI: Agent Surfaces for MCP servers and A2A agents, OPA/Rego policies, caller authentication, secrets and OAuth credential delegation, MCP and A2A proxies, and gateway-to-gateway routes."
+    }
+  ]
+}

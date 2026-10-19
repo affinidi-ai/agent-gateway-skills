@@ -1,0 +1,84 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: make ci PYTHON=python
+
+  plugin-validate:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: repo
+    env:
+      CLAUDE_CLI_VERSION: "2.1.303"
+      # The checks of the shared validate-plugins action from claude-plugins-community, at the commit that
+      # claude-plugins-official's own validate-plugins workflow uses. Its scripts run directly instead of
+      # through the action, so every step here is pinned by commit or exact version.
+      VALIDATOR_REF: 426e469f322952061102b286b378c0c9733a0934
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: anthropics/claude-plugins-community
+          ref: ${{ env.VALIDATOR_REF }}
+          path: tooling
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install the claude CLI
+        run: |
+          npm install -g --include=optional "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"
+          claude --version
+      # The marketplace invariants and `claude plugin validate` on the marketplace manifest. The external
+      # and changed-folder checks do not apply to a plugin whose source is the repository root ("./"), so
+      # they are left out and the next step validates the plugin. Invariant I8 reads "./" as "/" and warns
+      # that the plugin has no manifest; I8 is a warning by default, so WARN_INVARIANTS keeps its default.
+      - name: Marketplace invariants
+        env:
+          ACTION_PATH: ${{ github.workspace }}/tooling/.github/actions/validate-plugins
+          VALIDATE_TMP: ${{ runner.temp }}/validate-plugins
+          MARKETPLACE_PATH: .claude-plugin/marketplace.json
+          ENTRIES_DIR: ""
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+          FAIL_ON_WARNINGS: "false"
+          WARN_INVARIANTS: "I1 I3 I5 I8"
+          SHA_EXEMPT: ""
+          SCOPE_ERRORS_TO_CHANGED: "false"
+        run: |
+          mkdir -p "$VALIDATE_TMP"
+          "$ACTION_PATH/scripts/00-detect-changes.sh"
+          "$ACTION_PATH/scripts/11-validate-invariants.sh"
+          "$ACTION_PATH/scripts/20-validate-cli-marketplace.sh"
+      - name: claude plugin validate
+        run: |
+          claude plugin validate . --strict
+          claude plugin validate .claude-plugin/plugin.json --strict
+          claude plugin validate skills --strict
+      # The Agent Skills name rules and frontmatter. It needs no token: without one, its read-only
+      # repository lookups find nothing and only the local checks run.
+      - name: gh skill publish --dry-run
+        run: |
+          gh --version
+          gh skill publish --dry-run < /dev/null

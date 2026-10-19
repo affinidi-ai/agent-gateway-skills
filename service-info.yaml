@@ -1,0 +1,12 @@
+# Service metadata the security review reads, in the shape of the Agent Gateway's own file.
+name: agent-gateway-skills
+description: |-
+  Agent skill and plugin that lets a coding agent set up, check and debug an Affinidi Agent Gateway
+  with the fabric CLI.
+criticality: medium
+visibility: external
+lifecycle: experimental
+data-classification: confidential
+tech-stack: documentation
+team-name: octo
+code-repository: https://github.com/affinidi-ai/agent-gateway-skills

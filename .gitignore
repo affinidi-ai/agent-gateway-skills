@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.e2e-work/
+evals/results/
+.env*
+!.env.example
+.DS_Store
