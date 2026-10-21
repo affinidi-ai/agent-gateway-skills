@@ -235,9 +235,17 @@ Copilot Studio's Direct Line is the only backend ([KI-28](known-issues.md)). The
 takes only the send method, `message/send` or its A2A v1.0 spelling `SendMessage`, with text parts only (a part
 with `kind: "text"`, or a v1.0 part with `text` and no `kind`), and opens a new Direct Line conversation for every
 call, so the bot keeps no context between messages. The gateway checks `A2A-Version` and the JSON-RPC envelope
-first ([protocols.md](protocols.md#a2a-on-the-wire)) but not the A2A request shape, so a malformed message gets
-the proxy's own `-32602`. A live check needs a published Copilot Studio
-agent; without one you can check the save.
+first ([protocols.md](protocols.md#a2a-on-the-wire)) but never the A2A request shape, so a malformed message gets
+the proxy's own `-32602`. A surface whose target is an A2A proxy has fixed versions in its `access_point.a2a`:
+`["1.0"]` when it is created or its target moves to an A2A proxy, and what is stored after that. So the callers
+of a new one send `A2A-Version: 1.0`; one that sends no header counts as `0.3` and gets `-32009`. A save that
+names other versions is refused. A live check needs a published Copilot Studio agent; without one you can check
+the save.
+
+In front of an A2A proxy the gateway always checks only the envelope, so `validation` applies only to a variant
+that points the target at something other than an A2A proxy. Without such a variant, a save that sets a level
+other than `envelope` and other than the stored one is refused, and an edit that removes the last such variant
+resets the stored level to `envelope`.
 
 **Confirm with the user:** the agent is published, and its Direct Line secret may be stored on the gateway.
 **Before.** `fabric agent-gateway a2a-proxies list -o json`, and `fabric agent-gateway secrets list -o json` for the secret's `secret_id`.
@@ -278,22 +286,25 @@ polling, not the total: each Direct Line call has its own `timeout_secs` limit, 
 three times as long. Without `agent_identity` the API uses the proxy-managed subject,
 not the dashboard's Entra default.
 
-**Verify.** The gateway writes the agent card. `name` is the card override or the **surface** name, and
-`protocolVersion` is `[a2a] default_version` when the gateway accepts that version, else the first version it
-does accept ([protocols.md](protocols.md#a2a-on-the-wire)).
-`supportedInterfaces[]` has one entry per accepted version, preferred first, each with `protocolBinding`
-`JSONRPC` and a `url` ending in `<route>/rpc`. While the `a2a_legacy_compatibility` flag is on, the default,
-the card also carries the v0.3 fields `url` (the same `<route>/rpc`), `preferredTransport`, `agentProvider`
-and `supportsAuthenticatedExtendedCard`; with it off they are gone. `capabilities.extendedAgentCard`,
-`streaming` and `pushNotifications` are `false`. Fetch `<listen-address><route>/.well-known/agent-card.json`,
-then POST a `message/send` or `SendMessage` with one text part to `<listen-address><route>/rpc`. Expect
-`result.kind` `message` and `result.role` `agent`: the reply is in the v0.3 shape whichever version the
-caller used. A rejected secret is JSON-RPC -32020 in HTTP 200, not an
-HTTP 401.
+**Verify.** The gateway writes the agent card. `name` is the card override or the **surface** name.
+`supportedInterfaces[]` has one entry per version the surface accepts, so only `1.0` on a new surface, each with
+`protocolBinding` `JSONRPC`, its `protocolVersion` and a `url` ending in `<route>/rpc`. The first entry is the
+preferred version: `[a2a] default_version` when the surface accepts it, else the first version it does accept
+([protocols.md](protocols.md#a2a-surface-settings)). While the surface accepts `0.3`, the card also carries the v0.3
+fields `protocolVersion`, `url` (the same `<route>/rpc`), `preferredTransport`, `agentProvider` and
+`supportsAuthenticatedExtendedCard`. `capabilities.extendedAgentCard`, `streaming` and `pushNotifications` are
+`false`. Fetch `<listen-address><route>/.well-known/agent-card.json`, then POST a `SendMessage` with
+`A2A-Version: 1.0` and one text part to `<listen-address><route>/rpc`. The docs' test sends `message/send` with
+no `A2A-Version` header, which a new A2A proxy surface refuses with 400 `-32009`. Expect the A2A 1.0 reply:
+`result.message`, with `role` `ROLE_AGENT` and parts without `kind`. The reply follows the spelling of the send
+method, not the `A2A-Version` header: a `message/send` gets the v0.3 reply, the message itself as `result`, with
+`kind` `message` and `role` `agent`. A rejected secret is JSON-RPC -32020 in HTTP 200, not an HTTP 401.
 
 **Undo.** **Confirm with the user:** A2A callers of the route stop being served. Delete the surface, then
 `fabric agent-gateway a2a-proxies delete <proxy-id>`, then the secret if nothing else uses
 it. Rotating the secret needs no proxy change: it is read on every call.
+
+**If it fails.** [When it fails](#when-it-fails).
 
 ## Delete order
 
@@ -328,7 +339,10 @@ fabric agent-gateway surfaces list -o json | jq --arg id "<proxy-id>" \
 | `target A2A Proxy configuration is invalid` | `a2a-proxy://` on an MCP surface | Protocol `a2a` or `ap2` |
 | -32601 `Unsupported A2A method` | Not `message/send` or `SendMessage`: streaming, task and extended-card methods included | Send `message/send` or `SendMessage` |
 | -32602 `A2A proxy supports text parts only`, `Missing params.message`, `Missing message parts`, `message parts must not be empty`, `Text part is missing text` | A non-text part, or a message without text | One or more text parts |
-| HTTP 400 -32700 `Parse error: invalid JSON`; HTTP 200 -32700 `Parse error` for an empty body or with `[a2a] validate_messages` off | The body is not JSON | Send a JSON-RPC body |
+| HTTP 400 -32700 `Parse error: invalid JSON`; HTTP 200 -32700 `Parse error` for an empty body | The body is not JSON | Send a JSON-RPC body |
+| HTTP 400 -32009 `Unsupported A2A protocol version '0.3'` with `"supported": ["1.0"]` | The caller sent no `A2A-Version` header, or `0.3`, to a surface that accepts `1.0` only | Send `A2A-Version: 1.0` |
+| HTTP 400 `the accepted A2A versions of a surface whose Target is an A2A proxy are fixed at [...]` | A surface save named other versions for an A2A proxy target | Leave `accepted_versions` out, or send the fixed ones |
+| HTTP 400 `an A2A proxy target always checks the JSON-RPC envelope only, ...` | A surface save set `validation` other than `envelope` where every target is an A2A proxy | Set `access_point.a2a.validation` to `envelope` |
 | -32020 `A2A proxy not found`, `A2A proxy is disabled` | The `a2a-proxy://` ID is deleted, or the proxy's `status` is `disabled` | Re-point the surface, or set the proxy's `status` back to `active` |
 | -32020 `Direct Line secret not found` | `backend.secret_id` does not resolve | Store the secret again under that `secret_id` |
 | -32020 `A2A proxy target DNS resolution failed:` | The Direct Line host does not resolve from the gateway | Fix `base_url`, or the gateway's DNS |
@@ -341,4 +355,4 @@ fabric agent-gateway surfaces list -o json | jq --arg id "<proxy-id>" \
 - [KI-28](known-issues.md): the A2A proxy speaks only Copilot Direct Line.
 - [KI-34](known-issues.md): deletes have no prompt, and a proxy delete does not check references.
 
-Sources: [Enable A2A communication with a Copilot Studio agent](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/how-to-guides/setup/enable-a2a-communication-with-a-copilot-studio-agent/), [Expose a REST API as MCP tools](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/how-to-guides/setup/expose-a-rest-api-as-mcp-tools/), [A2A Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/a2a-proxy/), [MCP Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/mcp-proxy/), [Per-tool policy bindings](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/mcp-proxy-tool-policies/); gateway source: `src/mcp_proxies/handlers.rs`, `src/mcp_proxies/types.rs`, `src/proxy/handler.rs`, `src/mcp/request_validation.rs`, `src/a2a_proxies/runtime.rs`, `src/a2a_proxies/agent_card.rs`, `src/url_validation.rs`; fabric's `src/commands.rs`.
+Sources: [Enable A2A communication with a Copilot Studio agent](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/how-to-guides/setup/enable-a2a-communication-with-a-copilot-studio-agent/), [Expose a REST API as MCP tools](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/how-to-guides/setup/expose-a-rest-api-as-mcp-tools/), [A2A Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/a2a-proxy/), [MCP Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/mcp-proxy/), [Per-tool policy bindings](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/mcp-proxy-tool-policies/); gateway source: `src/mcp_proxies/handlers.rs`, `src/mcp_proxies/types.rs`, `src/proxy/handler.rs`, `src/identity/handlers/surfaces.rs`, `src/mcp/request_validation.rs`, `src/a2a_proxies/runtime.rs`, `src/a2a_proxies/agent_card.rs`, `src/url_validation.rs`; fabric's `src/commands.rs`.

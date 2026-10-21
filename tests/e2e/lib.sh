@@ -23,8 +23,8 @@
 #                                  anything else as JSON, like jq -r
 #   unique NAME                    print NAME-$E2E_RUN_ID, a name no other run uses
 #   start_target KIND [VAR] [--lan]
-#                                  start `targets.py KIND` (mcp, a2a, idp, rest) on a free port and
-#                                  export VAR (default MCP_URL, A2A_URL, IDP_URL or REST_URL) as its
+#                                  start `targets.py KIND` (mcp, a2a, a2a1, idp, rest) on a free port and
+#                                  export VAR (default MCP_URL, A2A_URL, A2A1_URL, IDP_URL or REST_URL) as its
 #                                  URL; --lan binds it to this machine's non-loopback IPv4 address,
 #                                  exported as LAN_HOST, instead of 127.0.0.1, unless
 #                                  E2E_LOOPBACK_TARGETS lists KIND: then it binds 127.0.0.1 on the
@@ -165,8 +165,8 @@ start_target() {
         esac
     done
     case "$kind" in
-        mcp|a2a|idp|rest) ;;
-        *) fail "start_target: KIND must be mcp, a2a, idp or rest, not '$kind'" ;;
+        mcp|a2a|a2a1|idp|rest) ;;
+        *) fail "start_target: KIND must be mcp, a2a, a2a1, idp or rest, not '$kind'" ;;
     esac
     [ -n "$var" ] || var="$(printf '%s' "$kind" | tr '[:lower:]' '[:upper:]')_URL"
     printf '%s\n' "$var" | grep -Eq "$E2E_VAR_RE" || fail "start_target: '$var' is not a variable name"

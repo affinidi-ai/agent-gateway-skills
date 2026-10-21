@@ -33,8 +33,7 @@ GitHub Copilot CLI.
 1. Get a gateway and `fabric`. To deploy a gateway, follow
    [Deploy Agent Gateway appliance](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/get-started/deploy-agent-gateway-appliance-portal/).
    To build one from source, follow [affinidi-ai/agent-gateway](https://github.com/affinidi-ai/agent-gateway).
-   Build `fabric` from [affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli),
-   put it on your `PATH`, and check it with `fabric --version`.
+   Install `fabric` as [Requirements](#requirements) describes, and check it with `fabric --version`.
 2. Sign in: `fabric agent-gateway login --host https://<your-gateway>`. A browser opens for the passkey or SSO
    login; then allow the CLI to sign in as you. On a machine without a browser, sign in with a personal access
    token instead ([fabric.md](skills/affinidi-agent-gateway/references/fabric.md#sign-in)).
@@ -78,9 +77,11 @@ description, A2A proxies, and routes between gateways.
 
 - A running Affinidi Agent Gateway, and network access to its management API and its data-plane listeners.
 - `fabric`, the command-line client for Affinidi appliance management APIs, on your `PATH`. The gateway's
-  commands are under `fabric agent-gateway`. Build it from
-  [affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli), a Rust project; its
-  `Cargo.toml` names the Rust version it needs.
+  commands are under `fabric agent-gateway`. Install it as the
+  [affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli#install) README
+  describes: with Homebrew on macOS (`brew install --cask affinidi-ai/tap/fabric`; the full name matters, because
+  Homebrew has an unrelated `fabric` formula), from a release's prebuilt binary on Linux, and with Cargo
+  elsewhere.
 - An approved gateway account, signed in with `fabric agent-gateway login`. What the agent can do depends on
   your role:
   with the default roles, `user` can view, `poweruser` can also manage proxies, and only `administrator` can
@@ -94,8 +95,8 @@ description, A2A proxies, and routes between gateways.
 The skill names the gateway and `fabric` versions it was reviewed against at the top of
 [SKILL.md](skills/affinidi-agent-gateway/SKILL.md). On any other version the agent tells you so. On every
 version it checks `fabric agent-gateway <command> --help` before it uses a command, because `fabric` builds from
-different commits can report the same version, and wherever the live help or the running gateway contradicts the
-skill, it trusts them.
+different commits can report the same version, as gateway builds can, and wherever the live help or the running
+gateway contradicts the skill, it trusts them.
 
 ## Safety and data handling
 
@@ -139,7 +140,7 @@ copilot plugin install affinidi-agent-gateway@affinidi-agent-gateway-skills
 skill, with source `plugin`. To check that the skill is loaded, ask the agent "Which skills do you have for the
 Affinidi Agent Gateway?".
 
-To stay on one release, add the marketplace at that release's tag instead, such as `v0.1.0`; both agents then
+To stay on one release, add the marketplace at that release's tag, `v<version>`, instead; both agents then
 install and update from that tag:
 
 ```sh
@@ -150,7 +151,8 @@ copilot plugin marketplace add affinidi-ai/agent-gateway-skills#v<version>
 To update:
 
 ```sh
-# Claude Code, then restart Claude Code
+# Claude Code: refresh the marketplace, update the plugin, then restart Claude Code
+claude plugin marketplace update affinidi-agent-gateway-skills
 claude plugin update affinidi-agent-gateway@affinidi-agent-gateway-skills
 
 # GitHub Copilot CLI
@@ -158,8 +160,9 @@ copilot plugin update affinidi-agent-gateway@affinidi-agent-gateway-skills
 ```
 
 Claude Code installs the plugin's `version` and delivers a new copy when a release raises it
-([Versions and updates](https://code.claude.com/docs/en/plugins/loading#versions-and-updates)). Copilot CLI
-updates to the repository's latest commit. Neither updates this marketplace on its own unless you turn on
+([Versions and updates](https://code.claude.com/docs/en/plugins/loading#versions-and-updates)); without the
+marketplace refresh, `claude plugin update` reports the version it already has. Copilot CLI updates to the
+repository's latest commit. Neither updates this marketplace on its own unless you turn on
 auto-update for it: in Claude Code, run `/plugin`, open **Marketplaces**, select it and choose **Enable
 auto-update** ([Keep plugins updated](https://code.claude.com/docs/en/plugins/install)); in Copilot CLI, set
 `autoUpdate: true` on its `extraKnownMarketplaces` entry in your user settings
@@ -220,7 +223,7 @@ that directory.
 | Claude Code | 2.1.303 | install, update, install at a tag, removal | install from a local clone, user scope |
 | GitHub Copilot CLI | 1.0.98 | install, update, install at a tag, removal | install from a local clone, user scope |
 
-The checks ran on 2026-10-19 with gh 2.102.0, each agent in its own throwaway configuration, with a local clone
+The checks ran on 2026-10-21 with gh 2.102.0, each agent in its own throwaway configuration, with a local clone
 standing in for the GitHub repository. Both agents read the plugin from the same manifests in `.claude-plugin/`;
 Copilot CLI finds them through its documented
 [file locations](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference#file-locations).

@@ -61,7 +61,9 @@ The docs, the surface document and the code name the same things differently:
 | Channel Route (the dashboard's Entry point URL) | `listen_address` plus `route` | a route under a channel prefix (`channel_path_prefix`) |
 | Caller Context | `access_point.caller_authentication` | source auth: `input.source_auth` |
 
-The other dashboard elements map to the keys in [Feature placements](#feature-placements).
+The other dashboard elements map to the keys in [Feature placements](#feature-placements). The **A2A Protocol**
+section of an A2A Access Point is `access_point.a2a`: the versions the surface accepts and how much of a request
+it checks ([protocols.md](protocols.md#a2a-surface-settings)).
 
 ## Before you create
 
@@ -239,8 +241,9 @@ fabric agent-gateway surfaces update "$SURFACE_ID" --add tags=beta -o json | jq 
 
 **Or change the whole document.** `update --file` is a PUT of the whole document, for many fields at once; it
 cannot be combined with `--set`, `--unset`, `--add` or `--remove`. When the file leaves out `mcp_http` (on the
-surface, or on a Transit Point with the same `id`), the `authorization` inside it, or `mcp_legacy_metadata_output`,
-the PUT keeps the stored value; remove one from the surface with `--unset`, such as `--unset mcp_http`. Edit a
+surface, or on a Transit Point with the same `id`), the `authorization` inside it, `mcp_legacy_metadata_output` or
+`access_point.a2a`, the PUT keeps the stored value. Remove `mcp_http` or `mcp_legacy_metadata_output` with
+`--unset`, such as `--unset mcp_http`; `--unset access_point.a2a` puts that block's defaults back. Edit a
 copy and keep `surface_id` or drop it:
 
 ```bash

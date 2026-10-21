@@ -1,11 +1,11 @@
 ---
 name: affinidi-agent-gateway
-description: Configure, verify and debug an Affinidi Agent Gateway with the fabric CLI, covering Agent Surfaces for MCP servers and A2A agents, OPA/Rego policies, caller authentication, secrets and target credentials, OAuth credential providers and the delegation vault, MCP proxies from OpenAPI, A2A proxies, variants, Transit Points, fabric:// routes between gateways and Trust Checks. Use it when a call through the gateway returns 401, 403, 404, 429, 502, 503 or 504, or JSON-RPC -32000, -32001 or -32022; when a permissive Rego policy still denies; when putting an MCP server or A2A agent behind the gateway and closing the direct path; when setting up per-user OAuth delegation or its callback URL; when changing rate limits or config safely; or when reading audit events, logs and OPA input. Also use it when asked to route LLM traffic through the gateway. Not for Agent Stream moderation, local stdio MCP servers, adding OAuth to your own MCP server, Kubernetes Rego or IdP administration.
+description: Configure, verify and debug an Affinidi Agent Gateway with the fabric CLI, covering Agent Surfaces for MCP servers and A2A agents, OPA/Rego policies, caller authentication, secrets and target credentials, OAuth credential providers and the delegation vault, MCP proxies from OpenAPI, A2A proxies, variants, Transit Points, fabric:// routes between gateways and Trust Checks. Use it when a call through the gateway returns 401, 403, 404, 429, 502, 503 or 504, or JSON-RPC -32000, -32001, -32009 or -32022; when a permissive Rego policy still denies; when putting an MCP server or A2A agent behind the gateway and closing the direct path; when setting up per-user OAuth delegation or its callback URL; when changing rate limits or config safely; or when reading audit events, logs and OPA input. Also use it when asked to route LLM traffic through the gateway. Not for Agent Stream moderation, local stdio MCP servers, adding OAuth to your own MCP server, Kubernetes Rego or IdP administration.
 license: Apache-2.0
 compatibility: Needs the fabric CLI, jq and curl, unzip to read downloaded logs, and network access to the gateway's management API and data-plane listeners.
 metadata:
   gateway: "1.0.0"
-  gateway_commit: "fb173db10383"
+  gateway_commit: "f62f2de5969e"
   fabric: "0.1.2"
   checked: "2026-10-19"
 ---
@@ -138,8 +138,8 @@ In order, with what a deny answers at each stage ([policies.md](references/polic
    MCP identity or protocol family.
 5. Metadata Extraction (header mapping) and the trust-registry fetch.
 6. Appliance-wide gateway policy, then the gateway policy (403 problem+json).
-7. The A2A version gate (`-32009`), envelope and body validation, a payment relayed to a remote gateway
-   (`agent_pay`), egress vetting (403), body size (413), then the local payment check (402).
+7. The A2A checks in `access_point.a2a` (version `-32009`, envelope, shape: 400), a payment relayed to a
+   remote gateway (`agent_pay`), egress vetting (403), body size (413), then the local paywall (402).
 8. Per-tool MCP policy on `tools/call` (200 `-32000`).
 9. Identity resolution and the caller-leg Trust Check.
 10. Access Point `inbound_policy`, the appliance-wide surface plane, then `target.policy` (403 JSON, or 200
@@ -168,7 +168,7 @@ Exact strings and full tree: [triage.md](references/triage.md).
 | 404 `No route configured for path` | listen address maps to no listener, route typo, or surface disabled | [surfaces.md](references/surfaces.md) |
 | 400 `Virtual channel alias ... not found` / 503 `... is disabled` | variant selection | [surfaces.md](references/surfaces.md) |
 | 400 `-32022 Unsupported protocol version` / 406 Not Acceptable | MCP version other than `2024-11-05` or `2026-07-28` / `Accept` lacks `text/event-stream` | [protocols.md](references/protocols.md) |
-| 400 `-32009` (`A2A-Version` not supported) / 400 `-32602 Invalid params` with `data.errors[]` | A2A version not accepted, or a malformed message | [protocols.md](references/protocols.md) |
+| 400 `-32009` (`A2A-Version` not supported) / 400 `-32602 Invalid params` with `data.errors[]` | A2A version the surface refuses, or a malformed message (validation `full`) | [protocols.md](references/protocols.md) |
 | 401 problem+json `consent-required` / any other data-plane 401 | delegation needs consent / caller's token fails `mcp_http.authorization` / upstream's own 401: target credential wrong or missing | [credentials.md](references/credentials.md) |
 | 403 `Agent trust policy denied the request` / 200 `-32001 ... not allowed by policy` | surface or inbound policy deny | [policies.md](references/policies.md) |
 | 403 `no policy is loaded for this channel` | policy did not compile: fix it with `policies update` | [policies.md](references/policies.md) |
@@ -267,7 +267,7 @@ not serving ([surfaces.md](references/surfaces.md)).
 | [identity.md](references/identity.md) | who may call; the upstream sees a wrong or forged identity; "is this surface actually protected" |
 | [policies.md](references/policies.md) | writing or changing Rego; blocking a tool or message; any 403 or `-32000`/`-32001`; "policy allows but denies" |
 | [credentials.md](references/credentials.md) | the upstream needs a credential; 502 target auth; 401 consent; offboarding; compromise |
-| [protocols.md](references/protocols.md) | a client cannot connect; `-32022`, 406; agent-card problems; choosing MCP or A2A; payments |
+| [protocols.md](references/protocols.md) | a client cannot connect; `-32022`, `-32009`, 406; agent cards; MCP or A2A; payments |
 | [proxies.md](references/proxies.md) | exposing a REST API as MCP tools; `proxy://` or `a2a-proxy://` targets |
 | [operations.md](references/operations.md) | reloads and restarts; latency; 429, 502, 503; turning audit on; migrating |
 | [g2g.md](references/g2g.md) | calling a surface on another organisation's gateway; trust registries, issuers and Trust Checks |

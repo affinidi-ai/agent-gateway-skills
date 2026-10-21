@@ -30,7 +30,8 @@ jobs:
       CLAUDE_CLI_VERSION: "2.1.303"
       # The checks of the shared validate-plugins action from claude-plugins-community, at the commit that
       # claude-plugins-official's own validate-plugins workflow uses. Its scripts run directly instead of
-      # through the action, so every step here is pinned by commit or exact version.
+      # through the action, so the actions and the validator are pinned by commit and the claude CLI by exact
+      # version; Node is the latest 24.x and gh is the runner's.
       VALIDATOR_REF: 426e469f322952061102b286b378c0c9733a0934
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

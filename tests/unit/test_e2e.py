@@ -930,7 +930,7 @@ class Runner(unittest.TestCase):
 
     def test_helper_misuse_fails_the_case(self):
         """e2e runner: an unknown target kind, an unset URL variable and a bad run id are errors"""
-        for n, (setup, fragment) in enumerate((("start_target nope", "KIND must be mcp, a2a, idp or rest"),
+        for n, (setup, fragment) in enumerate((("start_target nope", "KIND must be mcp, a2a, a2a1, idp or rest"),
                                                ("target_requests NOPE_URL", "NOPE_URL is not set"),
                                                ("clear_target 'not a var'", "expected the name of a variable"),
                                                ("start_target mcp X --wide", "unknown option --wide"))):

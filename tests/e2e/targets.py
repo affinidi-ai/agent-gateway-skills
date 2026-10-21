@@ -2,7 +2,8 @@
 """Minimal upstream servers for the live e2e cases, standard library only.
 
     targets.py mcp  [--host H] [--port P]   MCP server (JSON-RPC over HTTP, protocol 2024-11-05)
-    targets.py a2a  [--host H] [--port P]   A2A agent (agent card + JSON-RPC message/send)
+    targets.py a2a  [--host H] [--port P]   A2A 0.3 agent (agent card + JSON-RPC message/send)
+    targets.py a2a1 [--host H] [--port P]   A2A agent that also speaks 1.0 (SendMessage, GetTask)
     targets.py idp  [--host H] [--port P]   OAuth 2.0 authorization server that approves every request
     targets.py rest [--host H] [--port P]   REST API with an OpenAPI 3 document at /openapi.json
 
@@ -181,7 +182,9 @@ class A2a(Base):
         msg = self.record(raw)
         if not isinstance(msg, dict):
             return self.send(400, rpc_error(None, -32700, "Parse error"))
-        method, rid, params = msg.get("method"), msg.get("id"), msg.get("params") or {}
+        return self.answer(msg.get("method"), msg.get("id"), msg.get("params") or {})
+
+    def answer(self, method, rid, params):
         if method == "message/send":
             incoming = params.get("message") or {}
             texts = [p.get("text", "") for p in incoming.get("parts", []) if p.get("kind") == "text"]
@@ -192,6 +195,29 @@ class A2a(Base):
         if method == "tasks/get":
             return self.send(200, rpc_error(rid, -32001, "Task not found"))
         return self.send(200, rpc_error(rid, -32601, "Method not found"))
+
+
+class A2a1(A2a):
+    """An agent that speaks A2A 1.0 as well as 0.3: its card lists both, and it answers both spellings."""
+
+    def card(self):
+        card = super().card()
+        card["supportedInterfaces"] = [
+            {"url": self.public_url + "/", "protocolBinding": "JSONRPC", "protocolVersion": version}
+            for version in ("1.0", "0.3")]
+        return card
+
+    def answer(self, method, rid, params):
+        if method == "SendMessage":
+            incoming = params.get("message") or {}
+            texts = [p["text"] for p in incoming.get("parts", []) if isinstance(p.get("text"), str)]
+            reply = {"messageId": str(uuid.uuid4()), "role": "ROLE_AGENT",
+                     "contextId": incoming.get("contextId") or str(uuid.uuid4()),
+                     "parts": [{"text": "echo: " + " ".join(texts)}]}
+            return self.send(200, rpc_result(rid, {"message": reply}))
+        if method == "GetTask":
+            return self.send(200, rpc_error(rid, -32001, "Task not found"))
+        return super().answer(method, rid, params)
 
 
 class Idp(Base):
@@ -268,7 +294,7 @@ class Rest(Base):
         return self.send(404, {"error": "not found"})
 
 
-KINDS = {"mcp": Mcp, "a2a": A2a, "idp": Idp, "rest": Rest}
+KINDS = {"mcp": Mcp, "a2a": A2a, "a2a1": A2a1, "idp": Idp, "rest": Rest}
 
 
 def main():

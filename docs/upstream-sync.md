@@ -33,10 +33,10 @@ which steps it gates.
 - This repository, with `bash`, `git`, `make`, Python 3.9 or later, `jq` and `curl`, which the scripts and
   checks need.
 - A clone of the Agent Gateway source that holds both `baseline.agent_gateway` and the gateway's new ref, and a
-  clone of the fabric CLI that holds both `baseline.fabric_cli` and the CLI's new ref. The gateway repository is
-  public (`git clone https://github.com/affinidi-ai/agent-gateway.git`); the CLI repository needs access to
-  affinidi-ai. Run `git -C <clone> fetch origin main` in each first: the scripts never fetch. Every step needs
-  them.
+  clone of the fabric CLI that holds both `baseline.fabric_cli` and the CLI's new ref. Both repositories are
+  public (`git clone https://github.com/affinidi-ai/agent-gateway.git` and
+  `git clone https://github.com/affinidi-ai/affinidi-trust-fabric-cli.git`). Run `git -C <clone> fetch origin main`
+  in each first: the scripts never fetch. Every step needs them.
 - A `fabric` binary that you built from the CLI's new ref yourself, in this run. `fabric --version` does not
   tell builds apart, because builds from different commits report the same version, so a binary built from any
   other commit makes the report's `The CLI snapshot matches.` meaningless. Build it from a copy of the new ref,
@@ -72,8 +72,8 @@ which steps it gates.
   prints nothing).
 - Read the baseline from `.github/skill-drift-matrix.json`: `baseline.agent_gateway` (the gateway commit),
   `baseline.fabric_cli` (the CLI commit), `baseline.gateway`, `baseline.fabric` and `baseline.docs_read`. A
-  matrix path that starts with `fabric-cli/` is a path in the CLI repository, without that prefix; every other
-  path is in the gateway repository.
+  matrix path that starts with `affinidi-trust-fabric-cli/` is a path in the CLI repository, without that prefix;
+  every other path is in the gateway repository.
 
 ## Steps
 
@@ -90,13 +90,13 @@ which steps it gates.
    - with `FABRIC` set, whether `.github/fabric-cli-snapshot.json` and `references/commands.md` still match the
      binary. Without `FABRIC`, it says the snapshot was not compared.
 
-   A few files are named by most pages, so a change to one flags most pages; for example `fabric-cli/src/commands.rs`,
-   `src/proxy/handler.rs`, `src/config/types.rs`, `src/config/agent_surface.rs`, `src/identity/router.rs`,
-   `src/proxy/server.rs` and `src/server/orchestrator.rs`. Step 3 says how to tell
-   whether such a change matters to a page.
+   A few files are named by most pages, so a change to one flags most pages; for example
+   `affinidi-trust-fabric-cli/src/commands.rs`, `src/proxy/handler.rs`, `src/config/types.rs`,
+   `src/config/agent_surface.rs`, `src/identity/router.rs`, `src/proxy/server.rs` and
+   `src/server/orchestrator.rs`. Step 3 says how to tell whether such a change matters to a page.
 
-   When a baseline is not in its clone (the branch it was on was squashed or rebased away, or the repository
-   was published with fresh history), the report says so and lists every page. Then review every page against the new ref. The script exits 0 whatever it finds,
+   When a baseline is not in its clone (the branch it was on was squashed or rebased away), the report says so
+   and lists every page. Then review every page against the new ref. The script exits 0 whatever it finds,
    and 2 on a usage error or when a git command fails; then the report is incomplete, so fix the cause and
    run it again.
 2. **Commands.** Do this before you edit any prose: `make validate` rejects every `fabric` command and option
@@ -205,8 +205,3 @@ which steps it gates.
     in the skill. Before you commit, run the banned-content check over the message too: write it into an
     untracked file at the repository root, such as `sync-commit.txt`, run `make validate` (it scans untracked
     files that git does not ignore), then delete the file.
-
-## Exceptions
-
-The CLI baseline is a commit of affinidi-ai/affinidi-trust-fabric-cli, which is not public yet. When it goes
-public, check that the commit is still there, and sync against the head of its public `main` if it is not.
