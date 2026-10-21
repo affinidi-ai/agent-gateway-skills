@@ -50,7 +50,8 @@ Record the evidence where a reader can check it:
 ## Checks
 
 Requirements: Python 3.9 or later (standard library only), `git`, `make`, `bash` and `jq`. The
-standard validators need `claude` and `gh`, and the end-to-end cases also need `curl`, a `fabric`
+standard validators need `claude` and `gh`, `scripts/upstream-check.py` run by hand needs `gh` signed in, and
+the end-to-end cases also need `curl`, a `fabric`
 binary and a gateway.
 
 ```sh
@@ -66,7 +67,9 @@ What each part checks:
   path and docs page each page relies on, so an upstream change points at the pages to re-read. Its
   `baseline` records the reviewed Agent Gateway commit, the gateway and `fabric` versions and the day
   the docs were read; `SKILL.md`'s metadata and its "Reviewed against" line carry the same versions for
-  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit.
+  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit. `make ci` fails when
+  `baseline.gateway` or `baseline.fabric` is not a version such as `1.1.0` or `1.1.0-rc.1`, or a baseline commit
+  is not a full commit ID, because the `upstream` workflow reads them.
 - **Commands.** `.github/fabric-cli-snapshot.json` and `references/commands.md` are generated from the
   `fabric` binary. `make validate` checks every `fabric ...` invocation in the skill's shell blocks and inline code,
   with its options, against that snapshot, so a renamed command or flag there fails the checks; an option
@@ -86,6 +89,21 @@ validate-plugins action from `anthropics/claude-plugins-community`, run as its s
 error or warning; and `gh skill publish --dry-run`. The command-reference check
 and the end-to-end cases need a `fabric` binary or a live gateway, so they run outside CI with `make check` and
 `make e2e`.
+
+A second workflow, `.github/workflows/upstream.yml`, runs `scripts/upstream-check.py` every Monday, and when
+started from the Actions tab or with `gh workflow run upstream.yml`. It never runs on a push or a pull request,
+and its job runs only in the `affinidi-ai` organisation, so never in a fork. It compares the highest `vX.Y.Z` tag
+of the gateway and `fabric` repositories with the versions in the matrix `baseline`. While either tag is newer,
+it keeps one issue open, titled `Upstream sync: gateway X, fabric Y`, that names the newer releases; once neither
+is, it closes each such issue that is still open ([Keeping up with upstream](#keeping-up-with-upstream)). It
+changes only issues that the workflow opened, and only in a run on `main`. A run on another branch, or one started
+with `dry_run`, prints what it would change, and so does
+`python3 scripts/upstream-check.py --dry-run --repo affinidi-ai/agent-gateway-skills`. The issue is assigned to
+nobody and mentions nobody, so code owners watch this repository's issues (Watch, then Custom, then Issues) to
+hear of one. A failed run opens no issue and shows in the Actions tab, and GitHub disables a scheduled workflow
+in a public repository after 60 days without activity in the repository. So the absence of an open issue shows
+that no release is newer only if the latest `upstream` run is recent and passed. When the Actions tab shows
+`upstream` as disabled, enable it there.
 
 ### Make targets
 
@@ -120,10 +138,12 @@ reference is not the generator's output.
 | `.github/skill-drift-matrix.json` | The reviewed baseline, and the source paths and docs pages each skill page relies on |
 | `.github/fabric-cli-snapshot.json` | The `fabric` command tree, generated from the binary |
 | `.github/workflows/check.yml` | CI: `make ci` and the standard validators |
+| `.github/workflows/upstream.yml` | The weekly run of `scripts/upstream-check.py` |
 | `evals/` | `claude plugin eval` cases for triggering and task quality |
 | `scripts/validate.py` | Offline checks over the whole repository |
 | `scripts/gen-cli-reference.py` | Generates the command snapshot and `references/commands.md` from the `fabric` binary |
 | `scripts/drift-report.sh` | Lists, per page, the upstream source files that changed since the baseline |
+| `scripts/upstream-check.py` | Keeps one issue open while the gateway or `fabric` has a release newer than the baseline |
 | `tests/unit/` | Unit tests for every script and for the end-to-end runner |
 | `tests/e2e/` | The literate end-to-end runner (`run.sh`, `lib.sh`, `extract.py`, `redact.py`), its test upstreams (`targets.py`), its cases and fixtures |
 | `docs/DESIGN.md` | Decisions, sources of truth and how the skill stays true |
@@ -292,9 +312,11 @@ E2E_DOCS_ROOT=tests/e2e/fixtures FABRIC=path/to/fabric FABRIC_E2E_HOST=http://lo
 
 ## Keeping up with upstream
 
-When the gateway or `fabric` changes, follow [docs/upstream-sync.md](docs/upstream-sync.md). It is the
+When the `upstream` workflow opens an issue, or the gateway or `fabric` changes in a way users notice, follow
+[docs/upstream-sync.md](docs/upstream-sync.md). It is the
 only procedure for moving the baseline in `.github/skill-drift-matrix.json`, and it ends with a pull
-request.
+request. A sync reaches users only in a new version, so that pull request also sets the version unless the run
+is partial, and after the merge a repository administrator tags the release ([Releases](#releases)).
 
 ## Checking an install
 
@@ -391,7 +413,10 @@ version, so a change reaches its users only in a new version. To release `<versi
 
 1. In a pull request, set both to `<version>`, following [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
    a new recipe or rule is a minor version, a correction a patch.
-2. After the merge, a maintainer tags the merge commit with a signed tag and pushes it:
+2. After the merge, a repository administrator tags the merge commit with a signed tag and pushes it. The tag
+   rules let only administrators, deploy keys and Affinidi's release automation create, move or delete a tag, so
+   a code owner without the administrator role asks an administrator or an owner of the `affinidi-ai`
+   organisation:
 
    ```sh
    git fetch origin main

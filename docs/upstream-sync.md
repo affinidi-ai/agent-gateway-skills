@@ -3,7 +3,8 @@
 How the skill is brought up to date when the Affinidi Agent Gateway or `fabric` changes. It is written to be
 followed by a person, or by an agent that knows nothing about earlier runs.
 
-The scripts only report. Whoever follows this page decides what changed and edits the skill. CI runs only the
+`scripts/drift-report.sh` only reports, and the `upstream` workflow only keeps an issue open while a release is
+newer than the baseline. Whoever follows this page decides what changed and edits the skill. CI runs only the
 offline checks.
 
 ## When to run it
@@ -11,9 +12,16 @@ offline checks.
 The skill rests on two repositories: the Agent Gateway source
 ([affinidi-ai/agent-gateway](https://github.com/affinidi-ai/agent-gateway)), and the `fabric` CLI
 ([affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli)). Both ship
-from `main`. Run it when either repository's `main` gets a new release (the `version` in its root `Cargo.toml`
-changes), or when `main` moves and the change matters to users. Each new ref is the head of that repository's
-`main`, never a feature branch.
+from `main`. Run it when either repository gets a new release (the `version` in its root `Cargo.toml` changes,
+and the release is tagged `vX.Y.Z`), or when its `main` moves and the change matters to users. Each new ref is
+the head of that repository's `main`, never a feature branch, even where the issue below links to a release tag.
+
+The `upstream` workflow notices releases: while either repository's highest `vX.Y.Z` tag is newer than the version
+in the baseline, it keeps an issue titled `Upstream sync: gateway X, fabric Y` open
+([CONTRIBUTING.md, "Checks"](../CONTRIBUTING.md#checks)). It compares versions, not commits, so it opens no issue
+for a release whose version the baseline already has, as when the last sync reviewed a `main` whose root
+`Cargo.toml` already named the next version. The code owners notice that case, and a change on `main` that
+matters to users, only by watching both repositories.
 
 Compare each baseline with its new ref in one diff, never commit by commit. Files such as `src/proxy/handler.rs`
 and the CLI's `src/commands.rs` change in most commits, so a per-commit diff flags most pages every time.
@@ -191,17 +199,26 @@ which steps it gates.
    - Always set `metadata.gateway_commit` in `SKILL.md` to the first 12 characters of the new gateway commit.
      `make validate` checks it against the matrix `baseline`.
    - In the matrix `baseline`, set `agent_gateway` and `fabric_cli` (each new ref's full commit ID), `gateway`
-     and `fabric` (the same values as `SKILL.md`'s metadata), and `docs_read` when you re-read the docs. Only
+     and `fabric` (the same values as `SKILL.md`'s metadata), and `docs_read` when you re-read the docs. `gateway`
+     and `fabric` are versions, `X.Y.Z` with an optional pre-release such as `1.1.0-rc.1`: the `upstream`
+     workflow reads them, and `make ci` fails on any other form. Only
      `metadata.gateway_commit` is checked against the baseline, so set the versions in both by hand.
    - Run `make ci`.
 8. **Install check.** As in [CONTRIBUTING.md, "Checking an install"](../CONTRIBUTING.md#checking-an-install).
+   Then set `CLAUDE_CLI_VERSION` in `.github/workflows/check.yml` to the `claude` version the check used, and
+   `VALIDATOR_REF` to the commit of `anthropics/claude-plugins-community` that
+   `anthropics/claude-plugins-official`'s `.github/workflows/validate-plugins.yml` uses now, and make the
+   README's "Tested with" table and its date match the check.
 9. **Evals.** Run them as [evals/README.md](../evals/README.md#run) describes, with `--no-publish`, in a
    throwaway configuration. They are advisory: report the score, and don't gate on it.
 10. **Commit.** Commit the edits on your branch and open a pull request
     ([CONTRIBUTING.md, "Commits"](../CONTRIBUTING.md#commits)). The subject follows CONTRIBUTING, "Commits",
-    and names the new gateway version, or the new ref's short commit ID when no version changed. The body gives
-    the commit your `fabric` was built from, each change with the upstream file and commit ID that caused it,
-    and for a partial run the pages still to review. Put every question you could not answer in the body, not
+    and names the new versions as the issue title does (`gateway X, fabric Y`), or the new refs' short commit IDs
+    when no version changed. The body gives the commit your `fabric` was built from, each change with the
+    upstream file and commit ID that caused it, and for a partial run the pages still to review. Put every question you could not answer in the body, not
     in the skill. Before you commit, run the banned-content check over the message too: write it into an
     untracked file at the repository root, such as `sync-commit.txt`, run `make validate` (it scans untracked
-    files that git does not ignore), then delete the file.
+    files that git does not ignore), then delete the file. Unless the run is partial, also set the version as
+    [CONTRIBUTING.md, "Releases"](../CONTRIBUTING.md#releases) step 1 describes, or the sync never reaches users.
+    When the `upstream` workflow opened an issue for this run, put `Closes #<number>` in the pull request's
+    description; for a partial run, `Refs #<number>` leaves it open.

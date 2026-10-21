@@ -233,6 +233,8 @@ Copilot CLI finds them through its documented
 - Each reference page names the gateway source files and docs pages it rests on, and
   [docs/upstream-sync.md](docs/upstream-sync.md) is the procedure for updating the pages that depend on
   changed code when the gateway or `fabric` changes.
+- A weekly workflow keeps an issue open here while the gateway or `fabric` has a release newer than the versions
+  the skill was reviewed against ([CONTRIBUTING.md, "Checks"](CONTRIBUTING.md#checks)).
 - Most worked examples run as end-to-end tests against a live gateway, and every `fabric` command written out
   in the skill is checked against the binary's own help.
 
