@@ -3,7 +3,7 @@
 
     targets.py mcp  [--host H] [--port P]   MCP server (JSON-RPC over HTTP, protocol 2024-11-05)
     targets.py a2a  [--host H] [--port P]   A2A 0.3 agent (agent card + JSON-RPC message/send)
-    targets.py a2a1 [--host H] [--port P]   A2A agent that also speaks 1.0 (SendMessage, GetTask)
+    targets.py a2a1 [--host H] [--port P]   A2A agent that also speaks 1.0 (GetTask)
     targets.py idp  [--host H] [--port P]   OAuth 2.0 authorization server that approves every request
     targets.py rest [--host H] [--port P]   REST API with an OpenAPI 3 document at /openapi.json
 
@@ -198,7 +198,8 @@ class A2a(Base):
 
 
 class A2a1(A2a):
-    """An agent that speaks A2A 1.0 as well as 0.3: its card lists both, and it answers both spellings."""
+    """An agent that speaks A2A 1.0 as well as 0.3: its card lists both, and it answers `GetTask`, the 1.0
+    spelling of `tasks/get`, which the A2A v1.0 recipe sends because it changes nothing on a real agent."""
 
     def card(self):
         card = super().card()
@@ -208,13 +209,6 @@ class A2a1(A2a):
         return card
 
     def answer(self, method, rid, params):
-        if method == "SendMessage":
-            incoming = params.get("message") or {}
-            texts = [p["text"] for p in incoming.get("parts", []) if isinstance(p.get("text"), str)]
-            reply = {"messageId": str(uuid.uuid4()), "role": "ROLE_AGENT",
-                     "contextId": incoming.get("contextId") or str(uuid.uuid4()),
-                     "parts": [{"text": "echo: " + " ".join(texts)}]}
-            return self.send(200, rpc_result(rid, {"message": reply}))
         if method == "GetTask":
             return self.send(200, rpc_error(rid, -32001, "Task not found"))
         return super().answer(method, rid, params)

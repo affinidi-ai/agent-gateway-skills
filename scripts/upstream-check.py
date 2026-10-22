@@ -9,7 +9,8 @@ the gateway and affinidi-ai/affinidi-trust-fabric-cli for fabric.
 The issue is one that the workflow opened (gh shows its author as app/github-actions) with a title that starts
 with "Upstream sync: ". While a release is newer, the check gives one such open issue the title and description
 that name the newer releases: the one that already has that title, or else the oldest. It opens one when none is
-open, checks that gh shows the new issue's author as the workflow, and closes any other such issue as superseded.
+open, checks that gh shows the new issue's author as the workflow (and closes it again when not, so the next run
+does not open another), and closes any other such issue as superseded.
 Once no release is newer, it closes each such issue that is still open. Issues anyone else opened are never
 changed, whatever their title.
 
@@ -166,19 +167,30 @@ def close(repo, number, title, comment, dry_run):
 
 
 def check_author(repo, url):
-    """Fail when gh does not show the issue just opened as the workflow's, so the next run would not find it."""
+    """Fail when gh does not show the issue just opened as the workflow's, so the next run would not find it.
+
+    The issue is closed again first, so that each failed run leaves one closed issue, not one more open one.
+    """
     match = re.fullmatch(r"https://github\.com/%s/issues/([0-9]+)" % re.escape(repo), url)
     if not match:
         raise UpstreamError("gh issue create printed %r, not the URL of an issue in %s" % (url, repo))
-    out = run(["gh", "issue", "view", match.group(1), "--repo", repo, "--json", "author"],
-              "reading the author of issue #%s" % match.group(1))
+    number = match.group(1)
+    out = run(["gh", "issue", "view", number, "--repo", repo, "--json", "author"],
+              "reading the author of issue #%s" % number)
     try:
         login = json.loads(out)["author"]["login"]
+        problem = None if login == WORKFLOW_AUTHOR else "gh shows the author of issue #%s as %r, not %r" % (
+            number, login, WORKFLOW_AUTHOR)
     except (ValueError, KeyError, TypeError) as exc:
-        raise UpstreamError("gh issue view printed something other than an author: %s" % exc)
-    if login != WORKFLOW_AUTHOR:
-        raise UpstreamError("gh shows the author of issue #%s as %r, not %r, so the next run would not find it; "
-                            "update WORKFLOW_AUTHOR" % (match.group(1), login, WORKFLOW_AUTHOR))
+        problem = "gh issue view printed something other than the author of issue #%s: %s" % (number, exc)
+    if problem:
+        try:
+            run(["gh", "issue", "close", number, "--repo", repo, "--reason", "not planned", "--comment",
+                 "The `upstream` workflow could not confirm that it opened this issue, so it closed it again; "
+                 "its failed run says why."], "closing issue #%s" % number)
+        except UpstreamError as exc:
+            problem += "; %s" % exc
+        raise UpstreamError("%s, so the next run would not find it; update WORKFLOW_AUTHOR" % problem)
 
 
 def main(argv=None):

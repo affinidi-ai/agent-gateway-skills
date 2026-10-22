@@ -386,15 +386,22 @@ and `off` lets requests with no readable method reach surface policy and the age
   `[a2a] validate_messages = false`, and `envelope` otherwise, never `full`. Set `full` on a surface that must
   refuse malformed messages. With `channel_config_source = "dynamodb"` nothing is given, and the defaults
   apply.
+- Rolling back to a gateway version from before per-surface settings needs the block removed from every stored
+  surface first: those versions refuse unknown Access Point fields and serve no surface that has one, and almost
+  every A2A or AP2 surface has one after the first start. **Confirm with the user:** this rewrites every stored
+  surface. Back the gateway up ([operations.md](operations.md#back-up-and-restore-the-same-gateway)) and stop
+  it, then, in the folder that holds `_storage`, run
+  `for f in _storage/agent_surfaces/*.json; do jq 'del(.access_point.a2a)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done`
+  (`[storage_paths] agent_surfaces`, if set, names another folder), and start the older version.
 
 **Who sends which version.** A request with no `A2A-Version` header counts as `0.3`, so a surface that does not
-accept `0.3` refuses it with `-32009` and `"supported": ["1.0"]`, a GET included. The agent card is not
-negotiated, so a client with no header can still fetch it. The counter `agent_gateway_a2a_protocol_version_total`
-shows who would break before you narrow a surface's versions. It counts every A2A and AP2 request the version
-check sees, refused ones included, by `channel_id` (the surface name), `negotiated_version` (`0.3`, `1.0`, or
-`rejected` for a request refused with `-32009`) and `method_era` (`0.3`, `1.0`, `unknown` for a method outside the
-table, or `none`). A `fabric://` request is counted on the sending gateway only. The version and the era can
-differ, because either spelling is accepted under either version.
+accept `0.3` refuses it with `-32009` and `"supported": ["1.0"]`, a GET to any path but the agent card included.
+The agent card is not negotiated, so a client with no header can still fetch it. The counter
+`agent_gateway_a2a_protocol_version_total` shows who would break before you narrow a surface's versions. It counts
+every A2A and AP2 request the version check sees, refused ones included, by `channel_id` (the surface name),
+`negotiated_version` (`0.3`, `1.0`, or `rejected` for a request refused with `-32009`) and `method_era` (`0.3`,
+`1.0`, `unknown` for a method outside the table, or `none`). A `fabric://` request is counted on the sending
+gateway only. The version and the era can differ, because either spelling is accepted under either version.
 [Recipe: accept only A2A v1.0 on a surface](#recipe-accept-only-a2a-v10-on-a-surface) narrows one surface.
 
 **`[a2a]` in `config.toml`** ([operations.md](operations.md#configuration-files)). `max_body_size` (10 MiB by
@@ -726,7 +733,9 @@ fabric agent-gateway surfaces add-feature "$SURFACE_ID" payment --file x402.json
   request reaches the paywall only on a surface whose A2A validation is `off`, or on the receiving gateway of a
   `fabric://` hop, which checks payment without the envelope check. `message_patterns` are literal substrings
   of the message text, not regular expressions, and x402 reads that text from every part's `text`, whatever its
-  `kind`. The gateway log records the length of the text it checks, not the text.
+  `kind`. The gateway log records the length of the text it checks, not the text, but it names each pattern
+  at INFO and whether the message matched it, so the log shows which requests held a pattern: use no pattern,
+  such as a customer's name, that must stay out of logs.
 - **When it is charged.** The paywall runs after egress vetting, the body-size limit and, on A2A, the
   version, envelope and shape checks the surface runs, so a malformed or wrong-version call is refused before
   it is charged. It runs before a `proxy://` target answers, so MCP proxy surfaces are charged too. A

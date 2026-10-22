@@ -29,7 +29,9 @@ Every problem is printed as `path:line: [check] message`, all of them, then a on
                  and dates in the metadata.checked month appear only in SKILL.md metadata, its one
                  'Reviewed against' line and commands.md's generated header; nowhere else under skills/
                  and not in the plugin descriptions. The 'Reviewed against' line agrees with metadata,
-                 and metadata.gateway_commit is the first 12 characters of the matrix baseline.agent_gateway.
+                 metadata.gateway_commit is the first 12 characters of the matrix baseline.agent_gateway,
+                 and metadata.gateway and metadata.fabric equal the matrix baseline.gateway and
+                 baseline.fabric.
   [fabric]       Every `fabric ...` command in the skill's Markdown exists in the CLI snapshot,
                  .github/fabric-cli-snapshot.json, with the options it names.
   [generated]    references/commands.md is exactly what gen-cli-reference.py renders from the snapshot.
@@ -576,6 +578,22 @@ def check_gateway_commit(root, rel_skill_md, metadata, report):
                    "%s in %s" % (commit, baseline, DRIFT_MATRIX))
 
 
+def check_baseline_versions(root, rel_skill_md, metadata, report):
+    """metadata.gateway and metadata.fabric are the versions in the matrix baseline, which the upstream check reads."""
+    path = os.path.join(root, DRIFT_MATRIX)
+    try:
+        baseline = json.loads((read_text(path) if os.path.isfile(path) else None) or "")["baseline"]
+    except (ValueError, KeyError, TypeError):
+        return  # the matrix rule reports a missing or unreadable matrix
+    if not isinstance(baseline, dict):
+        return
+    for key in ("gateway", "fabric"):
+        version, lineno = metadata.get(key, (None, 0))
+        if version is not None and baseline.get(key) != version:
+            report.add(rel_skill_md, lineno, "reviewed", "metadata.%s %s is not baseline.%s %s in %s; set both in "
+                       "the same change" % (key, version, key, baseline.get(key), DRIFT_MATRIX))
+
+
 def check_reviewed_literals(root, skill, metadata, files, docs, report):
     """Reviewed versions and review-month dates only where SKILL.md and commands.md allow them."""
     rel_skill_md = skill + "/SKILL.md"
@@ -584,6 +602,7 @@ def check_reviewed_literals(root, skill, metadata, files, docs, report):
     fabric = metadata.get("fabric", (None, 0))[0]
     checked, checked_line = metadata.get("checked", (None, 0))
     check_gateway_commit(root, rel_skill_md, metadata, report)
+    check_baseline_versions(root, rel_skill_md, metadata, report)
     patterns = [("version", NAMED_VERSION_RE)]
     patterns += [("version", re.compile(r"(?<![0-9A-Za-z.])v?" + re.escape(v) + r"(?![0-9A-Za-z]|\.[0-9])"))
                  for v in (gateway, fabric) if v]

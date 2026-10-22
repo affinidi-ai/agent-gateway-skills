@@ -27,8 +27,9 @@ Run `fabric --version`; it prints `fabric <version>`. If there is no `fabric` co
 the user to install it: the CLI's README has the steps. On macOS that is
 `brew install --cask affinidi-ai/tap/fabric`, always with the full name, because Homebrew has an unrelated
 `fabric` formula; on x86_64 and aarch64 Linux (glibc 2.34 or newer) a release's prebuilt binary; other systems
-install it with Cargo. When the version differs from the one [SKILL.md](../SKILL.md) was reviewed against, follow its version
-check.
+install it with Cargo. To install over an earlier `fabric`, such as one built with Cargo, the user removes it
+first, as the README says, or the old copy keeps running instead of the new one. When the version differs from
+the one [SKILL.md](../SKILL.md) was reviewed against, follow its version check.
 
 The macOS release binaries are signed with Affinidi's Developer ID and notarized, so a Keychain "Always Allow"
 grant lasts across upgrades. If macOS asks for Keychain access again after every new fabric binary, that

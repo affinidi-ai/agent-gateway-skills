@@ -1,7 +1,8 @@
 # Narrows one A2A surface to A2A 1.0 and back, following "Recipe: accept only A2A v1.0 on a surface" in
 # skills/affinidi-agent-gateway/references/protocols.md, in front of an agent that speaks both versions.
 # Blocks: 1 read the agent card's versions and the counter, 2 save the surface's settings, 3 accept 1.0 only,
-# 4 a request with no A2A-Version and one with A2A-Version 1.0, 5 restore the saved settings.
+# 4 a request with no A2A-Version and one with A2A-Version 1.0, 5 restore the saved settings. The counter the
+# recipe reads must then show each of those requests under this surface's name.
 
 setup() {
     local routing="$E2E_CASE_DIR/routing.json" listen prefix name
@@ -15,7 +16,8 @@ setup() {
         --target-endpoint "$A2A1_URL" -o json > "$E2E_CASE_DIR/setup-surface.json"
     SURFACE_ID=$(jq -r .surface_id "$E2E_CASE_DIR/setup-surface.json")
     SURFACE_URL="$listen$prefix/$name"
-    export SURFACE_ID SURFACE_URL
+    SURFACE_NAME=$name
+    export SURFACE_ID SURFACE_URL SURFACE_NAME
     clear_target A2A1_URL
 }
 
@@ -47,6 +49,15 @@ verify() {
     jq -e 'any(.[]; .body.method == "tasks/get")' "$E2E_CASE_DIR/a2a-requests-after.json" > /dev/null \
         || fail "after the undo, the request did not reach the A2A target" "$E2E_CASE_DIR/after-undo.out"
     pass "after the undo, a request with no A2A-Version is forwarded again"
+    local metrics="$E2E_CASE_DIR/metrics.out" negotiated era
+    fab agent-gateway metrics scrape > "$metrics"
+    for negotiated in rejected:0.3 1.0:1.0 0.3:0.3; do
+        era=${negotiated#*:} negotiated=${negotiated%%:*}
+        grep '^agent_gateway_a2a_protocol_version_total{' "$metrics" | grep -F "channel_id=\"$SURFACE_NAME\"" \
+            | grep -F "negotiated_version=\"$negotiated\"" | grep -F "method_era=\"$era\"" > /dev/null \
+            || fail "the A2A version counter has no $negotiated series with method_era $era for the surface" "$metrics"
+    done
+    pass "agent_gateway_a2a_protocol_version_total counts the refused request as rejected, then 1.0 and 0.3"
 }
 
 cleanup() {

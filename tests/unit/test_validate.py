@@ -567,6 +567,16 @@ class ReviewedLiterals(ValidateCase):
         self.replace(SKILL + "/SKILL.md", 'gateway_commit: "0123456789ab"', 'gateway_commit: "0123456789ac"')
         self.assertFailsOnly({"reviewed"}, "metadata.gateway_commit 0123456789ac is not the start of baseline.agent_gateway")
 
+    def test_baseline_versions_disagree_with_metadata(self):
+        """validate: a matrix baseline version other than the one in SKILL.md's metadata fails the reviewed rule"""
+        for old, new, fragment in (
+                ('"gateway": "1.2.3"', '"gateway": "1.2.4"', "metadata.gateway 1.2.3 is not baseline.gateway 1.2.4"),
+                ('"fabric": "9.8.7"', '"fabric": "9.8.8"', "metadata.fabric 9.8.7 is not baseline.fabric 9.8.8")):
+            with self.subTest(key=old):
+                self.replace(".github/skill-drift-matrix.json", old, new)
+                self.assertFailsOnly({"reviewed"}, fragment)
+                self.replace(".github/skill-drift-matrix.json", new, old)
+
     def test_gateway_commit_shape(self):
         """validate: a metadata.gateway_commit that is not 12 lowercase hex characters fails the reviewed rule"""
         self.replace(SKILL + "/SKILL.md", 'gateway_commit: "0123456789ab"', 'gateway_commit: "0123456789"')

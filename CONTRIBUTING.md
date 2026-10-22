@@ -67,9 +67,10 @@ What each part checks:
   path and docs page each page relies on, so an upstream change points at the pages to re-read. Its
   `baseline` records the reviewed Agent Gateway commit, the gateway and `fabric` versions and the day
   the docs were read; `SKILL.md`'s metadata and its "Reviewed against" line carry the same versions for
-  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit. `make ci` fails when
-  `baseline.gateway` or `baseline.fabric` is not a version such as `1.1.0` or `1.1.0-rc.1`, or a baseline commit
-  is not a full commit ID, because the `upstream` workflow reads them.
+  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit. `make ci` fails when the
+  metadata and the `baseline` disagree, and when `baseline.gateway` or `baseline.fabric` is not a version such as
+  `1.1.0` or `1.1.0-rc.1`, or a baseline commit is not a full commit ID, because the `upstream` workflow reads
+  them.
 - **Commands.** `.github/fabric-cli-snapshot.json` and `references/commands.md` are generated from the
   `fabric` binary. `make validate` checks every `fabric ...` invocation in the skill's shell blocks and inline code,
   with its options, against that snapshot, so a renamed command or flag there fails the checks; an option

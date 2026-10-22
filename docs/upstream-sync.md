@@ -201,8 +201,8 @@ which steps it gates.
    - In the matrix `baseline`, set `agent_gateway` and `fabric_cli` (each new ref's full commit ID), `gateway`
      and `fabric` (the same values as `SKILL.md`'s metadata), and `docs_read` when you re-read the docs. `gateway`
      and `fabric` are versions, `X.Y.Z` with an optional pre-release such as `1.1.0-rc.1`: the `upstream`
-     workflow reads them, and `make ci` fails on any other form. Only
-     `metadata.gateway_commit` is checked against the baseline, so set the versions in both by hand.
+     workflow reads them, and `make ci` fails on any other form. `make validate` fails when
+     `metadata.gateway_commit`, `metadata.gateway` or `metadata.fabric` disagrees with the baseline.
    - Run `make ci`.
 8. **Install check.** As in [CONTRIBUTING.md, "Checking an install"](../CONTRIBUTING.md#checking-an-install).
    Then set `CLAUDE_CLI_VERSION` in `.github/workflows/check.yml` to the `claude` version the check used, and

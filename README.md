@@ -81,7 +81,8 @@ description, A2A proxies, and routes between gateways.
   [affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli#install) README
   describes: with Homebrew on macOS (`brew install --cask affinidi-ai/tap/fabric`; the full name matters, because
   Homebrew has an unrelated `fabric` formula), from a release's prebuilt binary on Linux, and with Cargo
-  elsewhere.
+  elsewhere. Remove an earlier `fabric` first, such as one built with Cargo, as that README says, or the old copy
+  keeps running instead of the new one.
 - An approved gateway account, signed in with `fabric agent-gateway login`. What the agent can do depends on
   your role:
   with the default roles, `user` can view, `poweruser` can also manage proxies, and only `administrator` can

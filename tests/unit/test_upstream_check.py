@@ -111,9 +111,10 @@ elif like(["issue", "edit", None, "--repo", repo, "--title", None, "--body-file"
     find(args[2]).update(title=args[6], body=sys.stdin.read())
     save()
     print("https://github.com/%s/issues/%s" % (repo, args[2]))
-elif like(["issue", "close", None, "--repo", repo, "--reason", "completed", "--comment", None]):
+elif like(["issue", "close", None, "--repo", repo, "--reason", None, "--comment", None]) \
+        and args[6] in ("completed", "not planned"):
     fail("close")
-    find(args[2]).update(state="closed", comment=args[8])
+    find(args[2]).update(state="closed", reason=args[6], comment=args[8])
     save()
 else:
     sys.stderr.write("fake gh: unexpected call %r\n" % (args,))
@@ -375,17 +376,26 @@ class UpstreamCheck(unittest.TestCase):
         self.assertNotIn("comment", issues[9])
 
     def test_new_issue_author_is_checked(self):
-        """upstream-check: a new issue that gh does not show as the workflow's fails the run instead of recurring"""
+        """upstream-check: a new issue that gh does not show as the workflow's is closed again and fails the run"""
         self.tag(GATEWAY, "v1.0.1")
-        for extra, message in (({"view_author": "github-actions[bot]"},
-                                "gh shows the author of issue #1 as 'github-actions[bot]', not 'app/github-actions'"),
-                               ({"create_output": "Created issue"},
-                                "gh issue create printed 'Created issue', not the URL of an issue in %s" % SELF),
-                               ({"fail": {"view": "HTTP 404"}}, "reading the author of issue #1: gh exited 1"),
-                               ({"view_author": None}, "gh shows the author of issue #1 as None")):
+        for extra, message, closed in (
+                ({"view_author": "github-actions[bot]"},
+                 "gh shows the author of issue #1 as 'github-actions[bot]', not 'app/github-actions', so the next run "
+                 "would not find it; update WORKFLOW_AUTHOR", True),
+                ({"view_author": None}, "gh shows the author of issue #1 as None", True),
+                ({"view_author": "github-actions[bot]", "fail": {"close": "HTTP 500"}},
+                 "not 'app/github-actions'; closing issue #1: gh exited 1: HTTP 500, so the next run", False),
+                ({"create_output": "Created issue"},
+                 "gh issue create printed 'Created issue', not the URL of an issue in %s" % SELF, False),
+                ({"fail": {"view": "HTTP 404"}}, "reading the author of issue #1: gh exited 1", False)):
             with self.subTest(extra=extra):
                 self.issues(**extra)
                 self.assertFails(self.check(), 1, message)
+                (issue,) = self.state()["issues"]
+                self.assertEqual(issue["state"], "closed" if closed else "open")
+                if closed:
+                    self.assertEqual(issue["reason"], "not planned")
+                    self.assertIn("could not confirm that it opened this issue", issue["comment"])
 
     def test_writes_only_from_the_workflow_on_main(self):
         """upstream-check: --dry-run, a branch other than main or a run outside Actions prints and writes nothing"""
