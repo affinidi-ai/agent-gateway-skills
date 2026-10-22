@@ -240,10 +240,10 @@ proxy's own `-32602`. A surface whose target is an A2A proxy has fixed versions 
 `["1.0"]` when it is created or its target moves to an A2A proxy, and what is stored after that. So the callers of
 a new one send `A2A-Version: 1.0`; one that sends no header counts as `0.3` and gets `-32009`. A save that names
 other versions is refused. A surface that already had an A2A proxy target before per-surface settings was given
-both versions when it was first loaded, or `["1.0"]` where the retired `a2a_legacy_compatibility` flag was `false`
-([protocols.md](protocols.md#a2a-surface-settings)), so it keeps serving `0.3` callers, and a save that asks it
-for `["1.0"]` gets 400 `... are fixed at [0.3, 1.0]`. A live check needs a published Copilot Studio agent; without
-one you can check the save.
+its versions when it was first loaded ([protocols.md](protocols.md#a2a-surface-settings)). Where the retired
+`a2a_legacy_compatibility` flag was not `false`, that is both versions: it keeps serving `0.3` callers, and a save
+that asks it for `["1.0"]` gets 400 `... are fixed at [0.3, 1.0]`. Where the flag was `false`, it is `["1.0"]`,
+like a new one. A live check needs a published Copilot Studio agent; without one you can check the save.
 
 In front of an A2A proxy the gateway always checks only the envelope, so `validation` applies only to a variant
 that points the target at something other than an A2A proxy. Without such a variant, a save that sets a level

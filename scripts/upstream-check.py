@@ -9,10 +9,10 @@ the gateway and affinidi-ai/affinidi-trust-fabric-cli for fabric.
 The issue is one that the workflow opened (gh shows its author as app/github-actions) with a title that starts
 with "Upstream sync: ". While a release is newer, the check gives one such open issue the title and description
 that name the newer releases: the one that already has that title, or else the oldest. It opens one when none is
-open, checks that gh shows the new issue's author as the workflow (and closes it again when not, so the next run
-does not open another), and closes any other such issue as superseded.
-Once no release is newer, it closes each such issue that is still open. Issues anyone else opened are never
-changed, whatever their title.
+open, checks that gh shows the new issue's author as the workflow (and closes it again when not, so a failed
+check leaves no issue open), and closes any other such issue as superseded. Once no release is newer, it closes
+each such issue that is still open. Apart from an issue it has just opened, it never changes an issue that gh
+does not show as the workflow's, whatever its title.
 
 It changes issues only when GitHub Actions runs it (GITHUB_ACTIONS=true) on main (GITHUB_REF=refs/heads/main),
 as .github/workflows/upstream.yml does every Monday with GH_TOKEN set. Anywhere else, and with --dry-run, it reads
@@ -179,8 +179,9 @@ def check_author(repo, url):
               "reading the author of issue #%s" % number)
     try:
         login = json.loads(out)["author"]["login"]
-        problem = None if login == WORKFLOW_AUTHOR else "gh shows the author of issue #%s as %r, not %r" % (
-            number, login, WORKFLOW_AUTHOR)
+        problem = None if login == WORKFLOW_AUTHOR else (
+            "gh shows the author of issue #%s as %r, not %r, so the next run would not find it; update "
+            "WORKFLOW_AUTHOR" % (number, login, WORKFLOW_AUTHOR))
     except (ValueError, KeyError, TypeError) as exc:
         problem = "gh issue view printed something other than the author of issue #%s: %s" % (number, exc)
     if problem:
@@ -190,7 +191,7 @@ def check_author(repo, url):
                  "its failed run says why."], "closing issue #%s" % number)
         except UpstreamError as exc:
             problem += "; %s" % exc
-        raise UpstreamError("%s, so the next run would not find it; update WORKFLOW_AUTHOR" % problem)
+        raise UpstreamError(problem)
 
 
 def main(argv=None):

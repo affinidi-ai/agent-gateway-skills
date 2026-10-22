@@ -577,6 +577,11 @@ class ReviewedLiterals(ValidateCase):
                 self.assertFailsOnly({"reviewed"}, fragment)
                 self.replace(".github/skill-drift-matrix.json", new, old)
 
+    def test_baseline_version_missing_from_metadata(self):
+        """validate: SKILL.md without metadata.fabric fails the reviewed rule, whatever else it says"""
+        self.replace(SKILL + "/SKILL.md", '  fabric: "9.8.7"\n', '')
+        self.assertFailsOnly({"reviewed"}, "no metadata.fabric; set it to baseline.fabric 9.8.7")
+
     def test_gateway_commit_shape(self):
         """validate: a metadata.gateway_commit that is not 12 lowercase hex characters fails the reviewed rule"""
         self.replace(SKILL + "/SKILL.md", 'gateway_commit: "0123456789ab"', 'gateway_commit: "0123456789"')

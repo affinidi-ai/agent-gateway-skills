@@ -589,7 +589,10 @@ def check_baseline_versions(root, rel_skill_md, metadata, report):
         return
     for key in ("gateway", "fabric"):
         version, lineno = metadata.get(key, (None, 0))
-        if version is not None and baseline.get(key) != version:
+        if version is None:
+            report.add(rel_skill_md, 1, "reviewed", "no metadata.%s; set it to baseline.%s %s in %s"
+                       % (key, key, baseline.get(key), DRIFT_MATRIX))
+        elif baseline.get(key) != version:
             report.add(rel_skill_md, lineno, "reviewed", "metadata.%s %s is not baseline.%s %s in %s; set both in "
                        "the same change" % (key, version, key, baseline.get(key), DRIFT_MATRIX))
 

@@ -43,8 +43,9 @@ GIT_ENV = {
 
 # Stands in for gh: `issue list`, `issue view`, `issue create`, `issue edit` and `issue close` exactly as the
 # script calls them, with the issues in FAKE_GH_STATE. Issues it creates have the author gh shows for the
-# workflow's token. A "fail" entry there makes that call print its message and exit 1; "list_output" and
-# "create_output" replace what those calls print, and "view_author" the author that `issue view` shows.
+# workflow's token. A "fail" entry there makes that call print its message and exit 1; "list_output",
+# "create_output" and "view_output" replace what those calls print, and "view_author" the author that
+# `issue view` shows.
 FAKE_GH = r'''
 import json
 import os
@@ -98,7 +99,10 @@ if like(["issue", "list", "--repo", repo, "--state", "open", "--limit", "1000",
                            "author": author(i["author"])} for i in issues]))
 elif like(["issue", "view", None, "--repo", repo, "--json", "author"]):
     fail("view")
-    print(json.dumps({"author": author(state.get("view_author", find(args[2], False)["author"]))}))
+    if "view_output" in state:
+        sys.stdout.write(state["view_output"])
+    else:
+        print(json.dumps({"author": author(state.get("view_author", find(args[2], False)["author"]))}))
 elif like(["issue", "create", "--repo", repo, "--title", None, "--body-file", "-"]):
     fail("create")
     number = max([i["number"] for i in state["issues"]] + [0]) + 1
@@ -383,14 +387,18 @@ class UpstreamCheck(unittest.TestCase):
                  "gh shows the author of issue #1 as 'github-actions[bot]', not 'app/github-actions', so the next run "
                  "would not find it; update WORKFLOW_AUTHOR", True),
                 ({"view_author": None}, "gh shows the author of issue #1 as None", True),
+                ({"view_output": '{"author": null}'},
+                 "gh issue view printed something other than the author of issue #1: 'NoneType'", True),
                 ({"view_author": "github-actions[bot]", "fail": {"close": "HTTP 500"}},
-                 "not 'app/github-actions'; closing issue #1: gh exited 1: HTTP 500, so the next run", False),
+                 "update WORKFLOW_AUTHOR; closing issue #1: gh exited 1: HTTP 500", False),
                 ({"create_output": "Created issue"},
                  "gh issue create printed 'Created issue', not the URL of an issue in %s" % SELF, False),
                 ({"fail": {"view": "HTTP 404"}}, "reading the author of issue #1: gh exited 1", False)):
             with self.subTest(extra=extra):
                 self.issues(**extra)
-                self.assertFails(self.check(), 1, message)
+                proc = self.check()
+                self.assertFails(proc, 1, message)
+                self.assertEqual("WORKFLOW_AUTHOR" in proc.stderr, "view_author" in extra)
                 (issue,) = self.state()["issues"]
                 self.assertEqual(issue["state"], "closed" if closed else "open")
                 if closed:

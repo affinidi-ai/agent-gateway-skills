@@ -390,9 +390,14 @@ and `off` lets requests with no readable method reach surface policy and the age
   surface first: those versions refuse unknown Access Point fields and serve no surface that has one, and almost
   every A2A or AP2 surface has one after the first start. **Confirm with the user:** this rewrites every stored
   surface. Back the gateway up ([operations.md](operations.md#back-up-and-restore-the-same-gateway)) and stop
-  it, then, in the folder that holds `_storage`, run
-  `for f in _storage/agent_surfaces/*.json; do jq 'del(.access_point.a2a)' "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done`
-  (`[storage_paths] agent_surfaces`, if set, names another folder), and start the older version.
+  it. Then, as the user the gateway runs as and in the folder that holds `_storage`
+  (`[storage_paths] agent_surfaces`, if set, names another folder), rewrite each surface file in place, which
+  keeps its owner and mode:
+  `for f in _storage/agent_surfaces/*.json; do [ -e "$f" ] || continue; jq 'del(.access_point.a2a)' "$f" > "$f.tmp" && cat "$f.tmp" > "$f" && rm "$f.tmp"; done`.
+  Start the older version only once `jq -s -e 'all(.[]; .access_point.a2a == null)' _storage/agent_surfaces/*.json`
+  prints `true`. With `channel_config_source = "dynamodb"`, the surfaces created or saved on this version hold the
+  block in the table, and the API cannot remove it, because `--unset` stores the defaults: remove it from those
+  items in the table itself (inference).
 
 **Who sends which version.** A request with no `A2A-Version` header counts as `0.3`, so a surface that does not
 accept `0.3` refuses it with `-32009` and `"supported": ["1.0"]`, a GET to any path but the agent card included.
