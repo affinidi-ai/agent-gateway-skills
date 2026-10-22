@@ -38,6 +38,8 @@ file (CONTRIBUTING, "End-to-end cases").
 - `make e2e`: the live cases, against a disposable gateway only.
 - `make cli-reference FABRIC=...` regenerates `references/commands.md` and `.github/fabric-cli-snapshot.json`;
   never edit either by hand.
+- `python3 scripts/upstream-check.py --dry-run --repo affinidi-ai/agent-gateway-skills` prints what the weekly
+  `upstream` workflow would do with issues and changes nothing; it needs `gh` signed in.
 
 When a check fails, fix the content, not the check.
 

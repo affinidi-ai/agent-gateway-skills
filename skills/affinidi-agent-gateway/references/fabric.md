@@ -24,10 +24,12 @@ route answered 404.
 ## Get fabric
 
 Run `fabric --version`; it prints `fabric <version>`. If there is no `fabric` command, stop and ask
-the user to install it: the CLI's README has the steps, with prebuilt binaries for x86_64 and aarch64 Linux
-(glibc 2.34 or newer) and for Apple silicon and Intel Macs (macOS 12 or newer); other systems install it with
-Cargo. When the version differs from the one [SKILL.md](../SKILL.md) was reviewed against, follow its version
-check.
+the user to install it: the CLI's README has the steps. On macOS that is
+`brew install --cask affinidi-ai/tap/fabric`, always with the full name, because Homebrew has an unrelated
+`fabric` formula; on x86_64 and aarch64 Linux (glibc 2.34 or newer) a release's prebuilt binary; other systems
+install it with Cargo. To install over an earlier `fabric`, such as one built with Cargo, the user removes it
+first, as the README says, or the old copy keeps running instead of the new one. When the version differs from
+the one [SKILL.md](../SKILL.md) was reviewed against, follow its version check.
 
 The macOS release binaries are signed with Affinidi's Developer ID and notarized, so a Keychain "Always Allow"
 grant lasts across upgrades. If macOS asks for Keychain access again after every new fabric binary, that
@@ -199,6 +201,9 @@ names from the roles list above:
   custom headers: give such a token only to a client that sends the header. A resource's own actions, such
   as a gateway's `issuer` and `trusted-issuers`, are checked against the same ID; a sub-path the gateway does
   not list is refused to a scoped token.
+- One setting needs an appliance-wide caller even on a surface a scoped token may write: a token with a
+  tenant, a resource pattern or required headers that sets an A2A surface's `access_point.a2a.validation` to
+  `off` gets 403, unless the surface was already `off` ([protocols.md](protocols.md#a2a-surface-settings)).
 - The tenant header's pattern must match one value only, such as `x-tenant-id=123456789012`; the pattern
   must match the whole value. A broader one, `[0-9]{12}` say, gets 400
   `tenant selector for header '<h>' is broad` unless `config.toml` has a `[tenancy.trusted_tenant_header]`
@@ -345,7 +350,8 @@ rm -f pat-view.json pat-full.json
   replaces the record and clears them, as do `surfaces update --file` and `policies update`, so start from
   `get -o json`. A Governance Audit integration keeps its `audit_events`, `audit_drop_after_secs` and
   `audit_max_attempts` when the file leaves them out. `surfaces update --file` keeps only the stored
-  `mcp_http` (or the `authorization` inside it) and `mcp_legacy_metadata_output` when the file leaves them out
+  `mcp_http` (or the `authorization` inside it), `mcp_legacy_metadata_output` and `access_point.a2a` when the
+  file leaves them out
   ([surfaces.md](surfaces.md));
   `jwt-verification-strategies update` replaces `name`, `expected_issuer` and `jwks_source`, so send all
   three. `update` for `users`, `certificates`, `connections`, `connection-points`, `issuers`,

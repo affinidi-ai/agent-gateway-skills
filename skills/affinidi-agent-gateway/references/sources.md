@@ -23,8 +23,8 @@ Fetch the page with your web tool when:
 Otherwise answer from the reference pages. Every reference page except commands.md and this one ends with a Sources line naming the docs pages and gateway
 files it was checked against, so that line tells you which page below to read for a given topic. A gateway file
 such as `src/proxy/handler.rs` is a path in the gateway's source repository,
-[affinidi-ai/agent-gateway](https://github.com/affinidi-ai/agent-gateway); the `fabric` files those lines name
-are not published.
+[affinidi-ai/agent-gateway](https://github.com/affinidi-ai/agent-gateway), and a `fabric` file is a path in
+[affinidi-ai/affinidi-trust-fabric-cli](https://github.com/affinidi-ai/affinidi-trust-fabric-cli).
 
 Every docs page also serves itself as Markdown: add `index.md` to its URL, after the trailing slash. Read that
 version when you fetch a page; it holds the same text without the site's navigation.
@@ -174,6 +174,7 @@ newer than the version this skill describes. Read one for implementation detail 
 | [Capabilities](https://github.com/affinidi-ai/agent-gateway/blob/main/docs/CAPABILITIES.md) | What the gateway can do, in detail |
 | [Architecture](https://github.com/affinidi-ai/agent-gateway/blob/main/ARCHITECTURE.md) | How the gateway is built, and the module map: where in `src/` each part lives |
 | [Build from source](https://github.com/affinidi-ai/agent-gateway/blob/main/docs/development/GETTING_STARTED.md) | Building and running a gateway locally, such as a disposable one for testing |
+| [Deployment requirements](https://github.com/affinidi-ai/agent-gateway/blob/main/docs/DEPLOYMENT_REQUIREMENTS.md) | What a self-hosted gateway needs: the build to deploy, host sizing, storage and backups, ports, TLS, outbound access, secrets and time sync |
 | [Configuration files](https://github.com/affinidi-ai/agent-gateway/blob/main/docs/CONFIGURATION_REFERENCE.md) | What each configuration file controls and the effect of its fields |
 | [Configuration reload](https://github.com/affinidi-ai/agent-gateway/blob/main/docs/CONFIGURATION_RELOAD.md) | Reloads, the listener lifecycle, server mode and the `[a2a]` settings |
 | [Example configuration](https://github.com/affinidi-ai/agent-gateway/blob/main/config/examples/README.md) | The example configuration files and what each one maps to |

@@ -50,7 +50,8 @@ Record the evidence where a reader can check it:
 ## Checks
 
 Requirements: Python 3.9 or later (standard library only), `git`, `make`, `bash` and `jq`. The
-standard validators need `claude` and `gh`, and the end-to-end cases also need `curl`, a `fabric`
+standard validators need `claude` and `gh`, `scripts/upstream-check.py` run by hand needs `gh` signed in, and
+the end-to-end cases also need `curl`, a `fabric`
 binary and a gateway.
 
 ```sh
@@ -66,24 +67,44 @@ What each part checks:
   path and docs page each page relies on, so an upstream change points at the pages to re-read. Its
   `baseline` records the reviewed Agent Gateway commit, the gateway and `fabric` versions and the day
   the docs were read; `SKILL.md`'s metadata and its "Reviewed against" line carry the same versions for
-  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit.
+  users, and `metadata.gateway_commit` the first 12 characters of the gateway commit. `make ci` fails when the
+  metadata and the `baseline` disagree, and when `baseline.gateway` or `baseline.fabric` is not a version such as
+  `1.1.0` or `1.1.0-rc.1`, or a baseline commit is not a full commit ID, because the `upstream` workflow reads
+  them.
 - **Commands.** `.github/fabric-cli-snapshot.json` and `references/commands.md` are generated from the
   `fabric` binary. `make validate` checks every `fabric ...` invocation in the skill's shell blocks and inline code,
   with its options, against that snapshot, so a renamed command or flag there fails the checks; an option
   named in prose or a call through `$FABRIC` is not checked.
-- **Recipes.** The skill's worked examples, apart from those in `references/g2g.md` and the listener-change and backup-and-restore recipes in
-  `references/operations.md`, carry `e2e` markers, and `make e2e` runs them against a live
-  gateway ([End-to-end cases](#end-to-end-cases)).
+- **Recipes.** The skill's worked examples carry `e2e` markers, apart from those in `references/g2g.md`, the
+  listener-change and backup-and-restore recipes in `references/operations.md`, and the live part of the
+  Copilot Studio recipe in `references/proxies.md`, which needs a published Copilot Studio agent. `make e2e` runs
+  them against a live gateway ([End-to-end cases](#end-to-end-cases)).
 - **Triggering and task quality.** `evals/` holds `claude plugin eval` cases: task prompts, requests
   that should load the skill and near-misses that should not ([evals/README.md](evals/README.md)).
   They are advisory and never run in CI.
 
 CI (`.github/workflows/check.yml`) runs on Ubuntu 24.04, the newest runner image with Python 3.9 builds. It runs
-`make ci` on Python 3.9 and 3.13, and the standard validators:
-the shared plugin validator action, `claude plugin validate --strict` on the marketplace, the plugin manifest
-and the skill, failing on any error or warning, and `gh skill publish --dry-run`. The command-reference check
+`make ci` on Python 3.9 and 3.13, and the standard validators: the marketplace checks of the shared
+validate-plugins action from `anthropics/claude-plugins-community`, run as its scripts at a pinned commit;
+`claude plugin validate --strict` on the marketplace, the plugin manifest and the skill, which fails on any
+error or warning; and `gh skill publish --dry-run`. The command-reference check
 and the end-to-end cases need a `fabric` binary or a live gateway, so they run outside CI with `make check` and
 `make e2e`.
+
+A second workflow, `.github/workflows/upstream.yml`, runs `scripts/upstream-check.py` every Monday, and when
+started from the Actions tab or with `gh workflow run upstream.yml`. It never runs on a push or a pull request,
+and its job runs only in the `affinidi-ai` organisation, so never in a fork. It compares the highest `vX.Y.Z` tag
+of the gateway and `fabric` repositories with the versions in the matrix `baseline`. While either tag is newer,
+it keeps one issue open, titled `Upstream sync: gateway X, fabric Y`, that names the newer releases; once neither
+is, it closes each such issue that is still open ([Keeping up with upstream](#keeping-up-with-upstream)). It
+changes only issues that the workflow opened, and only in a run on `main`. A run on another branch, or one started
+with `dry_run`, prints what it would change, and so does
+`python3 scripts/upstream-check.py --dry-run --repo affinidi-ai/agent-gateway-skills`. The issue is assigned to
+nobody and mentions nobody, so code owners watch this repository's issues (Watch, then Custom, then Issues) to
+hear of one. A failed run opens no issue and shows in the Actions tab, and GitHub disables a scheduled workflow
+in a public repository after 60 days without activity in the repository. So the absence of an open issue shows
+that no release is newer only if the latest `upstream` run is recent and passed. When the Actions tab shows
+`upstream` as disabled, enable it there.
 
 ### Make targets
 
@@ -118,10 +139,12 @@ reference is not the generator's output.
 | `.github/skill-drift-matrix.json` | The reviewed baseline, and the source paths and docs pages each skill page relies on |
 | `.github/fabric-cli-snapshot.json` | The `fabric` command tree, generated from the binary |
 | `.github/workflows/check.yml` | CI: `make ci` and the standard validators |
+| `.github/workflows/upstream.yml` | The weekly run of `scripts/upstream-check.py` |
 | `evals/` | `claude plugin eval` cases for triggering and task quality |
 | `scripts/validate.py` | Offline checks over the whole repository |
 | `scripts/gen-cli-reference.py` | Generates the command snapshot and `references/commands.md` from the `fabric` binary |
 | `scripts/drift-report.sh` | Lists, per page, the upstream source files that changed since the baseline |
+| `scripts/upstream-check.py` | Keeps one issue open while the gateway or `fabric` has a release newer than the baseline |
 | `tests/unit/` | Unit tests for every script and for the end-to-end runner |
 | `tests/e2e/` | The literate end-to-end runner (`run.sh`, `lib.sh`, `extract.py`, `redact.py`), its test upstreams (`targets.py`), its cases and fixtures |
 | `docs/DESIGN.md` | Decisions, sources of truth and how the skill stays true |
@@ -171,8 +194,9 @@ approve every request, and the `idp` server issues a token to any client, so run
 network you trust. Each run picks a random secret that the test servers ask for before they return or
 clear the requests they recorded, and the servers start without `FABRIC_TOKEN`.
 
-The delegation cases can run on loopback instead, against a gateway configured for testing to accept
-exact loopback URLs as OAuth endpoints. Set `E2E_LOOPBACK_TARGETS` to comma-separated `KIND:PORT`
+The delegation cases can run on loopback instead, against a gateway configured for testing to accept exact
+loopback URLs as OAuth endpoints; without that configuration, leave `E2E_LOOPBACK_TARGETS` unset so `--lan`
+uses the LAN address. Set `E2E_LOOPBACK_TARGETS` to comma-separated `KIND:PORT`
 entries, such as `idp:18101`: `start_target KIND --lan` then listens on `127.0.0.1` on the next port
 listed for that kind and exports `LAN_HOST=127.0.0.1`. The gateway must accept
 `http://127.0.0.1:PORT/authorize` and `http://127.0.0.1:PORT/token` for each `idp` port, and the
@@ -211,7 +235,7 @@ anything a block reads. Case files and blocks also have:
 | `fab ARGS...` | Runs `fabric` through the sandbox wrapper ([The keychain guard](#the-keychain-guard)). Blocks call `fabric` or `$FABRIC`, which is the same wrapper. |
 | `unique NAME` | Prints `NAME-$E2E_RUN_ID`. `E2E_RUN_ID` is lowercase letters and digits, random per run unless set. |
 | `json_get FILE EXPR` | Prints the Python expression EXPR over the JSON in FILE, with the document as `doc` and the environment as `env`: a string as it is, anything else as JSON. |
-| `start_target KIND [VAR] [--lan]` | Starts `tests/e2e/targets.py KIND` (`mcp`, `a2a`, `idp` or `rest`) on a free port and exports its URL as VAR (default `MCP_URL`, `A2A_URL`, `IDP_URL` or `REST_URL`). It listens on `127.0.0.1`, or with `--lan` on this machine's non-loopback IPv4 address, exported as `LAN_HOST`; the case is refused when that address does not answer a request from this machine. When `E2E_LOOPBACK_TARGETS` lists KIND, `--lan` listens on `127.0.0.1` on a listed port instead ([A gateway to run against](#a-gateway-to-run-against)). Call it in `setup`; the runner stops the target when the case ends. |
+| `start_target KIND [VAR] [--lan]` | Starts `tests/e2e/targets.py KIND` (`mcp`, `a2a`, `a2a1`, `idp` or `rest`) on a free port and exports its URL as VAR (default `MCP_URL`, `A2A_URL`, `A2A1_URL`, `IDP_URL` or `REST_URL`). `a2a` is an A2A 0.3 agent; `a2a1` also speaks A2A 1.0. It listens on `127.0.0.1`, or with `--lan` on this machine's non-loopback IPv4 address, exported as `LAN_HOST`; the case is refused when that address does not answer a request from this machine. When `E2E_LOOPBACK_TARGETS` lists KIND, `--lan` listens on `127.0.0.1` on a listed port instead ([A gateway to run against](#a-gateway-to-run-against)). Call it in `setup`; the runner stops the target when the case ends. |
 | `target_requests VAR` | Prints the JSON list of requests the target at `$VAR` received. |
 | `clear_target VAR` | Forgets the requests the target at `$VAR` received. |
 
@@ -289,9 +313,11 @@ E2E_DOCS_ROOT=tests/e2e/fixtures FABRIC=path/to/fabric FABRIC_E2E_HOST=http://lo
 
 ## Keeping up with upstream
 
-When the gateway or `fabric` changes, follow [docs/upstream-sync.md](docs/upstream-sync.md). It is the
+When the `upstream` workflow opens an issue, or the gateway or `fabric` changes in a way users notice, follow
+[docs/upstream-sync.md](docs/upstream-sync.md). It is the
 only procedure for moving the baseline in `.github/skill-drift-matrix.json`, and it ends with a pull
-request.
+request. A sync reaches users only in a new version, so that pull request also sets the version unless the run
+is partial, and after the merge a repository administrator tags the release ([Releases](#releases)).
 
 ## Checking an install
 
@@ -374,12 +400,11 @@ versions either.
 
 Conventional Commits subjects (`feat:`, `fix:`, `docs:`, `test:`, `chore:`), at most 72 characters,
 with no attribution and no issue tracker keys. Sign every commit. Every change reaches `main` through a
-pull request that passes CI and is approved by a code owner other than its author; nobody pushes to
-`main` directly.
+pull request that passes CI and CodeQL, with every review thread resolved, and that two people approve after
+its last push, one of them a code owner other than its author; no person pushes to `main` directly.
 
-Only a fix that cannot wait for two reviews skips this, and only after Affinidi Security is told. A
-repository admin saves the default-branch rule set, turns it off for that one push, turns it back on straight
-after, and checks that it matches the saved copy.
+Only a fix that cannot wait for two reviews goes another way, and only after Affinidi Security is told: Affinidi's
+release automation, the one actor allowed past the review rules, pushes it once CI has passed on the commit.
 
 ## Releases
 
@@ -389,7 +414,10 @@ version, so a change reaches its users only in a new version. To release `<versi
 
 1. In a pull request, set both to `<version>`, following [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
    a new recipe or rule is a minor version, a correction a patch.
-2. After the merge, a maintainer tags the merge commit with a signed tag and pushes it:
+2. After the merge, a repository administrator tags the merge commit with a signed tag and pushes it. The tag
+   rules let only administrators, deploy keys and Affinidi's release automation create, move or delete a tag, so
+   a code owner without the administrator role asks an administrator or an owner of the `affinidi-ai`
+   organisation:
 
    ```sh
    git fetch origin main

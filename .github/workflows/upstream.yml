@@ -1,0 +1,46 @@
+name: upstream
+
+# Every Monday, keeps one issue open while the Agent Gateway or fabric has a release newer than the versions the
+# skill was reviewed against (scripts/upstream-check.py). It only reports: docs/upstream-sync.md is the procedure
+# that follows. The script changes issues only in a run on main; a run started on another branch, or with
+# dry_run, prints what it would change.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print what would change, and change nothing
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream
+  cancel-in-progress: false
+
+jobs:
+  releases:
+    # Never in a fork: a fork's owner is whoever forked it.
+    if: github.repository_owner == 'affinidi-ai'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare the upstream releases with the baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = true ]; then
+            python3 scripts/upstream-check.py --dry-run
+          else
+            python3 scripts/upstream-check.py
+          fi

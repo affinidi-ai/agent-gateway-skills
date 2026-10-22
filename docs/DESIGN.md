@@ -23,8 +23,8 @@ clicks.
 | Generated command reference | `references/commands.md` stays, next to the rule to check `fabric agent-gateway <command> --help` before using a command, which wins when the two differ | No eval run has compared agents with and without it: a sandboxed run needs a credential other than a login ([evals/README.md](../evals/README.md#run)), and none has been done. |
 | Page owners | The drift matrix has no owner field | The repository's owners own every page. A per-page owner would need team names that nothing here defines, and an invented one would mislead. |
 | Evidence | A `Sources:` line on each reference page, `.github/skill-drift-matrix.json`, the `fabric` command snapshot (`.github/fabric-cli-snapshot.json`) and the live e2e cases. Settled answers and known issues name the upstream file and function, never a line; a security row marked `withheld` names neither until the gateway publishes an advisory | Page-level sources say what to re-read when upstream changes and stay valid when code moves within a file. Citations by line would break whenever code moved, whether or not behaviour changed. |
-| Validation | The standard validators in CI (`claude plugin validate`, the shared plugin validator action, `gh skill publish --dry-run`); `scripts/validate.py` keeps only the checks they lack | See [Staying true](#staying-true). |
-| Staying current | By runbook: [upstream-sync.md](upstream-sync.md), run by hand or by any agent. Who starts a run when [upstream-sync.md](upstream-sync.md#when-to-run-it)'s conditions hold, and whether a scheduled job does, is still to be decided | A scheduled job would also need clones of the Agent Gateway and `fabric` CLI sources, a `fabric` binary built from the CLI's new ref and a disposable gateway for the end-to-end step. |
+| Validation | The standard validators in CI (`claude plugin validate`, the shared validate-plugins checks, `gh skill publish --dry-run`); `scripts/validate.py` keeps only the checks they lack | See [Staying true](#staying-true). |
+| Staying current | By runbook: [upstream-sync.md](upstream-sync.md), run by hand or by any agent. A person starts a run when the weekly `upstream` workflow opens an issue for a new release ([Staying true](#staying-true)), or when a change on `main` matters to users ([upstream-sync.md](upstream-sync.md#when-to-run-it)) | Running the sync itself in CI would need clones of the Agent Gateway and `fabric` CLI sources, a `fabric` binary built from the CLI's new ref and a disposable gateway for the end-to-end step. Comparing release tags needs none of them, and without it nothing would tell anyone that a new release is out. |
 
 ## Format
 
@@ -102,12 +102,17 @@ check only when its failure would mean a reader is misled.
 - `make check` is `make ci` plus `make cli-check FABRIC=...`, which regenerates the command
   reference from the `fabric` binary (`scripts/gen-cli-reference.py`) and fails when the checked-in
   copy does not match. It fails, never skips, when the binary is missing.
-- Gateway source and docs are not checked automatically. `.github/skill-drift-matrix.json` names, per
+- Gateway source and docs are not checked automatically; only a new release is noticed, by the `upstream`
+  workflow below. `.github/skill-drift-matrix.json` names, per
   page, the source paths and docs pages to re-read when upstream changes, and
   `scripts/drift-report.sh` lists the pages whose paths changed between the baseline and a new ref.
   It is a report, never a gate. The comparison is one diff from the baseline to the new ref that
   [upstream-sync.md](upstream-sync.md#when-to-run-it) picks, never commit by commit: most commits touch the files many pages rely on, so a per-commit diff would flag most
   pages every time. [upstream-sync.md](upstream-sync.md) is the procedure that acts on the report.
+- `.github/workflows/upstream.yml` runs `scripts/upstream-check.py` weekly and never on a push or a pull request,
+  so it never judges a change here ([CONTRIBUTING.md, "Checks"](../CONTRIBUTING.md#checks)). It is a report,
+  never a gate: a run fails only when the script cannot read the baseline, the tags or the issues, or cannot
+  change an issue.
 - `make e2e` needs a live gateway (`FABRIC_E2E_HOST`, `FABRIC_E2E_TOKEN`, and `FABRIC` or `fabric` on `PATH`) and never runs
   in CI. It runs the skill's own marked code blocks, in document order, in a sandbox with its own
   HOME and `fabric` config, and prints every `# priority: P2` case it leaves out. Each run has one

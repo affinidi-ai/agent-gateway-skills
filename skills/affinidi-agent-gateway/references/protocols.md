@@ -277,76 +277,148 @@ What follows for an operator (inference from the table):
 
 ## A2A on the wire
 
-An A2A surface relays JSON-RPC to the agent at `target.endpoint`. The gateway accepts A2A v0.3 and v1.0 and
+An A2A surface relays JSON-RPC to the agent at `target.endpoint`. The gateway serves A2A v0.3 and v1.0 and
 never translates between them: the caller and the agent must speak the same version, and the agent card
-tells callers which one the agent speaks. Before forwarding to a direct `http(s)` target it runs three
-checks, in this order, and a refused request is not forwarded:
+tells callers which one the agent speaks. Each A2A surface sets which versions it accepts and how much of a
+request it checks, in `access_point.a2a` ([A2A surface settings](#a2a-surface-settings)). After gateway
+policy, and before any payment, egress check, body-size limit or forwarding, it runs up to three checks, in
+this order, and a refused request is not forwarded:
 
 1. **Version.** The `A2A-Version` request header names the caller's version. No header, or an empty one,
    means `0.3`, and only major and minor count, so `1.0.1` is `1.0` and a bare `1` is refused. A version
-   the gateway does not accept gets HTTP 400 with `id: null` and JSON-RPC `-32009` `Unsupported A2A
-   protocol version '<v>'`, with `data.requested` and `data.supported`. This check runs whatever
-   `validate_messages` says, and a request that also fails a later check reports only the version.
-2. **Envelope.** With `[a2a] validate_messages` on in `config.toml`, which is the default, the body must be
-   JSON with `jsonrpc` equal to `"2.0"` and a string `method`. Otherwise the caller gets HTTP 400 with
-   `id: null` and `-32700` `Parse error: invalid JSON`, or `-32600` `Invalid JSON-RPC: missing or invalid
-   'jsonrpc' field` or `... 'method' field`.
-3. **Request shape.** Under the same setting, `params`, when present, must be an object or an array for
-   every method, and the methods below are checked for the fields A2A requires in either version. A failure
-   is HTTP 400 with `id: null`, JSON-RPC `-32602` `Invalid params`, and one `{field, message}` per problem in
-   `error.data.errors[]`, with a dotted `field` such as `params.message.messageId`. The list stops at 20
-   entries, and `error.data.truncated` is `true` when there were more. The gateway logs
-   `A2A request shape validation failed:`.
+   the surface does not accept gets HTTP 400 with `id: null` and JSON-RPC `-32009` `Unsupported A2A
+   protocol version '<v>'`, with `data.requested` and `data.supported`, the surface's accepted versions. This
+   check runs at every validation level, and a request that also fails a later check reports only the
+   version. The gateway logs `A2A request refused with -32009:` with what the surface accepts and the header
+   the caller must send.
+2. **Envelope.** At validation `envelope`, the default, and `full`, a non-empty body must be JSON with
+   `jsonrpc` equal to `"2.0"` and a string `method`, so a JSON-RPC batch is refused too. Otherwise the caller
+   gets HTTP 400 with `id: null` and `-32700` `Parse error: invalid JSON`, or `-32600` `Invalid JSON-RPC:
+   missing or invalid 'jsonrpc' field` or `... 'method' field`, and the gateway logs `A2A request refused:
+   JSON-RPC validation failed:`.
+3. **Request shape.** At validation `full` only, `params`, when present, must be an object or an array, and
+   the methods below are checked for the fields A2A requires. The spelling of the method picks the version
+   whose rules apply: `message/send` is checked against A2A 0.3 and `SendMessage` against A2A 1.0, whatever
+   `A2A-Version` the caller sent. So a well-formed v0.3 `message/send` sent with `A2A-Version: 1.0` passes, and
+   a `SendMessage` with `role: "user"` is refused. A failure is HTTP 400 with `id: null`, JSON-RPC `-32602`
+   `Invalid params`, and one `{field, message}` per problem in `error.data.errors[]`, with a dotted `field`
+   such as `params.message.role` and a message that, for a value the version does not allow, names the
+   version and the method, such as `must be ROLE_USER or ROLE_AGENT in A2A 1.0 (SendMessage)`. The list stops at 20 entries, and `error.data.truncated`
+   is `true` when there were more. The gateway logs `A2A request refused: request shape validation failed`.
 
 | v0.3 method | v1.0 method | Shape check |
 | --- | --- | --- |
-| `message/send`, `message/stream` | `SendMessage`, `SendStreamingMessage` | `params.message` is an object with a non-empty `messageId` (or `message_id`), a `role` of `user`, `agent`, `ROLE_USER`, `ROLE_AGENT` or `ROLE_UNSPECIFIED`, and non-empty `parts`, each with exactly one of `text`, `file`, `data`, `raw` or `url` and, when it has a `kind`, the member that `kind` names |
+| `message/send`, `message/stream` | `SendMessage`, `SendStreamingMessage` | `params.message` is an object with a non-empty string `messageId` (in v1.0 also spelled `message_id`), a `role` of `user` or `agent` in v0.3 and `ROLE_USER` or `ROLE_AGENT` in v1.0, and non-empty `parts`. A v0.3 part carries exactly one of `text` (a string), `file` (an object with a string `bytes` or `uri`, not both) or `data` (an object), and a `kind`, when present, names that member; a v0.3 message's `kind`, when present, is `message`. A v1.0 part carries exactly one of `text`, `raw` or `url` (strings) or `data` |
 | `tasks/get`, `tasks/cancel`, `tasks/resubscribe` | `GetTask`, `CancelTask`, `SubscribeToTask` | a non-empty string `params.id` |
-| `tasks/list` | `ListTasks` | `params.status`, when present, is a task state in either spelling, such as `working` or `TASK_STATE_WORKING` |
+| `tasks/list` | `ListTasks` | `params.status`, when present, is a lowercase task state such as `working` in v0.3, and a `TASK_STATE_*` name such as `TASK_STATE_WORKING` in v1.0 |
 | `tasks/pushNotificationConfig/set`, `/get`, `/list`, `/delete` | `CreateTaskPushNotificationConfig`, `GetTaskPushNotificationConfig`, `ListTaskPushNotificationConfigs`, `DeleteTaskPushNotificationConfig` | none beyond `params` |
 | `agent/getAuthenticatedExtendedCard` | `GetExtendedAgentCard` | none beyond `params` |
 
-A method outside the table is forwarded unchecked, and the agent's own JSON-RPC errors come back to the
-caller. The forwarded body and the policy input keep the caller's spelling: a v0.3 caller's
-`message/send` reaches `input.a2a.method` as `message/send`, a v1.0 caller's as `SendMessage`. Policy also
-gets `input.a2a.method_canonical`: the v0.3 spelling of any method in the table, whichever spelling was sent,
-and absent for a method outside it, so one rule on it covers both ([policies.md](policies.md)). A v1.0
-message also has `role` `ROLE_USER` and parts with no `kind`, and neither is normalised.
+Fields a version does not define are ignored: a `kind` on a v1.0 part, `raw` or `url` on a v0.3 part, or
+`file` on a v1.0 part does not fail the check by itself, but a part whose only content member belongs to the
+other version fails, because it carries none of its own. An agent built on an official A2A SDK may still
+refuse such fields itself. A method outside the table is checked only for a structured `params`, and the
+agent's own JSON-RPC errors come back to the caller. The forwarded body and the policy input keep the caller's
+spelling: a v0.3 caller's `message/send` reaches `input.a2a.method` as `message/send`, a v1.0 caller's as
+`SendMessage`. Policy also gets `input.a2a.method_canonical`: the v0.3 spelling of any method in the table,
+whichever spelling was sent, and absent for a method outside it, so one rule on it covers both
+([policies.md](policies.md)). A v1.0 message also has `role` `ROLE_USER` and parts with no `kind`, and
+neither is normalised.
 
 Which targets get which checks:
 
 | Target | Version | Envelope | Shape |
 | --- | --- | --- | --- |
-| Direct `http(s)` | yes | yes | yes |
-| `a2a-proxy://` | yes | yes | no: the proxy runs its own ([proxies.md](proxies.md)) |
-| `fabric://`, on the sending or the receiving gateway | no | no | no |
+| Direct `http(s)` | the surface's accepted versions | at `envelope` and `full` | at `full` |
+| `a2a-proxy://` | the surface's accepted versions, fixed when the surface's own target is the A2A proxy ([proxies.md](proxies.md)) | always | never: the proxy runs its own checks |
+| `fabric://` | on the sending gateway, as for a direct target | on the sending gateway | on the sending gateway |
 | Transit Point (outbound) | no | no | no |
+
+On a `fabric://` surface the sending gateway decides, before the request is paid for or sent over the fabric,
+and the receiving gateway does not check again: the receiving surface's own `access_point.a2a` does not apply
+to fabric requests ([g2g.md](g2g.md)).
 
 Every forwarded request carries the gateway's `X-Gateway-Trace-Id` header, which
 continues a well-formed ID the caller sent. A caller-sent header is also copied through unchanged, so
 the agent can see two values ([KI-09](known-issues.md)).
 
-**v0.3 callers and the legacy flag.** The feature flag `a2a_legacy_compatibility`, in the settings'
-`feature_flags` map and on the dashboard's system settings, is read on every request and is on when unset,
-so `0.3` and `1.0` are both accepted. Off, only `1.0` is accepted: a caller that sends no `A2A-Version`
-is refused with `-32009` too, and the cards the gateway writes itself drop their v0.3 fields
-([proxies.md](proxies.md)). The counter `agent_gateway_a2a_protocol_version_total` shows who would
-break. It counts every A2A and AP2 request the version check sees, so none on a `fabric://` surface, by
-`channel_id` (the surface name), `negotiated_version` (`0.3`, `1.0`, or `rejected` for a request refused with
-`-32009`) and `method_era` (`0.3`, `1.0`, `unknown` for a method outside the table, or `none`). The version
-and the era can differ, because either spelling is accepted under either version.
-[Recipe: refuse A2A v0.3 callers](#recipe-refuse-a2a-v03-callers) turns the flag off.
+### A2A surface settings
 
-**`[a2a]` in `config.toml`** ([operations.md](operations.md#configuration-files)). `validate_messages` (default `true`) turns the envelope and shape checks on or
-off together. `max_body_size` (10 MiB by default) is the 413 limit (an MCP surface reaches its own
-`mcp_http.max_request_bytes`, 1 MiB by default, first) and caps every upstream response the gateway buffers:
-a larger one is 502 `Upstream response too large`. `default_version` is the `protocolVersion` of cards the
-gateway writes itself, such as A2A proxy cards, while the gateway accepts that version, and otherwise the
-first version it does accept, so `0.3` with the legacy flag off gives `1.0`; a managed agent's card keeps its
-own. The code default and the example `config.toml` are both `1.0`, but a `config.toml` can pin `0.3`, so
-read the file. It is read when the process starts, and a value whose major and minor are not `0.3` or `1.0`
-stops the configuration from loading with `a2a.default_version '<v>' is not a supported A2A protocol version
-(supported: 0.3, 1.0)`.
+`access_point.a2a` holds two fields; the dashboard shows them as the **A2A Protocol** section of the Access
+Point:
+
+| Field | Default | Values |
+| --- | --- | --- |
+| `accepted_versions` | `["0.3", "1.0"]`; `["1.0"]` on a surface created with an `a2a-proxy://` target or moved to one | At least one of `0.3` and `1.0`, each once |
+| `validation` | `"envelope"` | `"off"` skips the envelope and shape checks, `"envelope"` checks the JSON-RPC envelope, `"full"` the envelope and the request shape; the version check always runs. The dashboard calls them **Off**, **JSON-RPC envelope** and **Envelope + A2A fields** |
+
+```bash
+fabric agent-gateway surfaces get <SURFACE_ID> -o json | jq '.access_point.a2a'
+```
+
+Change a field with `fabric agent-gateway surfaces update <SURFACE_ID> --set 'access_point.a2a.<field>=<value>'`,
+as in [Recipe: accept only A2A v1.0 on a surface](#recipe-accept-only-a2a-v10-on-a-surface).
+**Confirm with the user:** narrower versions refuse callers, `full` refuses messages that `envelope` forwards,
+and `off` lets requests with no readable method reach surface policy and the agent, where rules on
+`input.a2a.method` cannot match them.
+
+- Every A2A and AP2 surface stores the block: a create without one stores the defaults, and an
+  `update --file` without one keeps the stored block. A change takes effect when it is saved, without a
+  restart. `--unset access_point.a2a` puts the defaults back (on an A2A proxy surface, its
+  fixed versions with `envelope`), and a surface whose protocol changes away from A2A or AP2 drops the block. On any other protocol the block is refused with
+  `access_point.a2a requires an A2A or AP2 Access Point`.
+- The block belongs to the surface: a variant cannot override it. Every variant takes the surface's versions,
+  and a variant whose target is a URL also takes its `validation`.
+- `"off"` lets a JSON-RPC batch, a body that is not JSON and a non-string `method` reach payment, surface
+  policy and the agent, with no method that a rule on `input.a2a.method` or a payment's method filter could
+  match; such a request is then charged by an x402 or MPP payment with A2A method filters, not skipped. Only an
+  appliance-wide caller can set it: a personal access token with a tenant, a resource pattern or required
+  headers that sets `"off"` on a surface that is not already `"off"` gets 403 `only an appliance-wide
+  administrator can set access_point.a2a.validation to "off"`. Global and gateway policy run before the
+  envelope check, so they see such a request at every level.
+- A JSON-RPC batch that holds an extended agent card request is refused with `-32600` at every level, `"off"`
+  included, because a card inside a batch answer cannot be rewritten.
+- A surface stored without the block, such as one written by hand or restored from a backup, is given one at
+  startup or on a configuration reload. An active node saves it; a standby node holds it in memory, serves the
+  surface with the defaults until a reload, and saves it when promoted. `accepted_versions` is `["1.0"]` when the settings'
+  `a2a_legacy_compatibility` flag, which has no other effect, is `false`, and both versions otherwise, A2A proxy targets included;
+  `validation` is `envelope` where every target is an A2A proxy, `off` elsewhere when `config.toml` sets
+  `[a2a] validate_messages = false`, and `envelope` otherwise, never `full`. Set `full` on a surface that must
+  refuse malformed messages. With `channel_config_source = "dynamodb"` nothing is given, and the defaults
+  apply.
+- Rolling back to a gateway version from before per-surface settings needs the block removed from every stored
+  surface first: those versions refuse unknown Access Point fields and serve no surface that has one, and almost
+  every A2A or AP2 surface has one after the first start. **Confirm with the user:** this rewrites every stored
+  surface. Back the gateway up ([operations.md](operations.md#back-up-and-restore-the-same-gateway)) and stop
+  it. Then, as the user the gateway runs as and in the folder that holds `_storage`
+  (`[storage_paths] agent_surfaces`, if set, names another folder), rewrite each surface file in place, which
+  keeps its owner and mode:
+  `for f in _storage/agent_surfaces/*.json; do [ -e "$f" ] || continue; jq 'del(.access_point.a2a)' "$f" > "$f.tmp" && cat "$f.tmp" > "$f" && rm "$f.tmp"; done`.
+  Start the older version only once `jq -s -e 'all(.[]; .access_point.a2a == null)' _storage/agent_surfaces/*.json`
+  prints `true`. With `channel_config_source = "dynamodb"`, the surfaces created or saved on this version hold the
+  block in the table, and the API cannot remove it, because `--unset` stores the defaults: remove it from those
+  items in the table itself (inference).
+
+**Who sends which version.** A request with no `A2A-Version` header counts as `0.3`, so a surface that does not
+accept `0.3` refuses it with `-32009` and `"supported": ["1.0"]`, a GET to any path but the agent card included.
+The agent card is not negotiated, so a client with no header can still fetch it. The counter
+`agent_gateway_a2a_protocol_version_total` shows who would break before you narrow a surface's versions. It counts
+every A2A and AP2 request the version check sees, refused ones included, by `channel_id` (the surface name),
+`negotiated_version` (`0.3`, `1.0`, or `rejected` for a request refused with `-32009`) and `method_era` (`0.3`,
+`1.0`, `unknown` for a method outside the table, or `none`). A `fabric://` request is counted on the sending
+gateway only. The version and the era can differ, because either spelling is accepted under either version.
+[Recipe: accept only A2A v1.0 on a surface](#recipe-accept-only-a2a-v10-on-a-surface) narrows one surface.
+
+**`[a2a]` in `config.toml`** ([operations.md](operations.md#configuration-files)). `max_body_size` (10 MiB by
+default) is the 413 limit (an MCP surface reaches its own `mcp_http.max_request_bytes`, 1 MiB by default,
+first) and caps every upstream response the gateway buffers: a larger one is 502 `Upstream response too
+large`. `default_version` is the preferred version on the cards the gateway writes itself, such as an A2A proxy card,
+when the card lists that version; an A2A proxy card lists only the versions its surface accepts, and a managed
+agent's card keeps its own. The code default and the example `config.toml` are both `1.0`, but a `config.toml`
+can pin `0.3`, so read the file. It is read when the process starts, and a value whose major and minor are not
+`0.3` or `1.0` stops the configuration from loading with `a2a.default_version '<v>' is not a supported A2A
+protocol version (supported: 0.3, 1.0)`. A `validate_messages` key under `[a2a]` is deprecated and logs a
+warning at startup: it only sets `validation` on a surface loaded without `access_point.a2a`, as above.
 
 **The agent card.** A GET to a path ending in `/.well-known/agent-card.json` or `/.well-known/agent.json`
 is answered by the gateway, not proxied. It fetches the card once from `target.endpoint` plus
@@ -362,8 +434,8 @@ gateway, and serves it without running the caller authentication gate. Details:
   or `HTTP+JSON` interface stays listed but points at a JSON-RPC endpoint, so a client that picks it
   fails (inference). Publish a card whose interfaces are all `JSONRPC`.
 - The card keeps the agent's own `protocolVersion`. It is served as `application/a2a+json` when the caller
-  sends `A2A-Version: 1.0` or asks for that type in `Accept`, and as `application/json` otherwise. A card
-  fetch never answers `-32009`, whatever the header says.
+  sends `A2A-Version: 1.0` and the surface accepts `1.0`, or asks for that type in `Accept`, and as
+  `application/json` otherwise. A card fetch never answers `-32009`, whatever the header says.
 - `securitySchemes` are the agent's own, passed through unchanged: the card does not describe the surface's
   caller authentication. Tell callers the surface's credential another way, and do not publish a scheme
   they cannot use against the gateway.
@@ -460,8 +532,8 @@ curl -sS -o /dev/null -w 'no header: %{content_type}\n' "$BASE/.well-known/agent
 curl -sS -o /dev/null -w 'A2A-Version 1.0: %{content_type}\n' "$BASE/.well-known/agent-card.json" -H 'A2A-Version: 1.0'
 ```
 
-Name a version the gateway does not accept. Expect HTTP 400 and `-32009` with `data.supported`; the agent
-never sees it:
+Name a version the surface does not accept. Expect HTTP 400 and `-32009` with `data.supported`, the
+surface's accepted versions; the agent never sees it:
 
 <!-- e2e: a2a-agent-card -->
 ```bash
@@ -470,18 +542,28 @@ curl -sS -w '\nHTTP %{http_code}\n' "$BASE" -H 'Content-Type: application/json' 
   -d '{"jsonrpc":"2.0","id":"req-4","method":"tasks/get","params":{"id":"no-such-task"}}'
 ```
 
-Send a v1.0 message with no `messageId` and a part whose `kind` names the wrong member. Expect HTTP 400,
-`-32602` and one entry per problem in `error.data.errors`:
+Turn on the request-shape check. Expect `"validation":"full"`:
+
+<!-- e2e: a2a-agent-card -->
+```bash
+SURFACE_ID="$(jq -r '.surface_id' surface.json)"
+fabric agent-gateway surfaces update "$SURFACE_ID" --set 'access_point.a2a.validation=full' -o json \
+  | jq -c '.access_point.a2a'
+```
+
+Send a v1.0 message with no `messageId` and the v0.3 `role` value `user`. Expect HTTP 400, `-32602` and one
+entry per problem in `error.data.errors`; at the default validation, `envelope`, the same message would be
+forwarded for the agent to judge:
 
 <!-- e2e: a2a-agent-card -->
 ```bash
 BASE="$(jq -r '.access_point.listen_address + .access_point.route' surface.json)"
 curl -sS -w '\nHTTP %{http_code}\n' "$BASE" -H 'Content-Type: application/json' -H 'A2A-Version: 1.0' \
-  -d '{"jsonrpc":"2.0","id":"req-5","method":"SendMessage","params":{"message":{"role":"ROLE_USER","parts":[{"kind":"data","text":"hello"}]}}}'
+  -d '{"jsonrpc":"2.0","id":"req-5","method":"SendMessage","params":{"message":{"role":"user","parts":[{"text":"hello"}]}}}'
 ```
 
-Send a well-formed v1.0 message. It is forwarded as sent: a v1.0 agent replies, and a v0.3-only agent
-answers with its own error, such as `-32601`, because the gateway does not translate:
+Send a well-formed v1.0 message. It passes the shape check and is forwarded as sent: a v1.0 agent replies,
+and a v0.3-only agent answers with its own error, such as `-32601`, because the gateway does not translate:
 
 <!-- e2e: a2a-agent-card -->
 ```bash
@@ -492,51 +574,73 @@ curl -sS -w '\nHTTP %{http_code}\n' "$BASE" -H 'Content-Type: application/json' 
 
 **Undo.** Run `fabric agent-gateway surfaces delete <SURFACE_ID>`.
 
-### Recipe: refuse A2A v0.3 callers
+**If it fails.** [When it fails](#when-it-fails).
 
-**Confirm with the user:** from the next request, every A2A caller on this gateway that sends
-`A2A-Version: 0.3` or no header at all is refused, on every surface whose target is not `fabric://`.
+### Recipe: accept only A2A v1.0 on a surface
 
-**Before.** Any series with `negotiated_version="0.3"` is a caller that will break; a series appears only
-after its first request. Save the settings:
+**Confirm with the user:** from the next request, callers of this surface that send `A2A-Version: 0.3` or no
+header at all are refused. Other surfaces are not affected.
 
-<!-- e2e: a2a-legacy-off -->
+**Before.** The agent behind the surface must speak v1.0: the gateway does not translate, so once only v1.0
+callers reach a v0.3-only agent, it refuses every request with its own error, such as `-32601`. Read its card
+through the surface, and stop unless `versions` lists `1.0`. Any series for this surface (`channel_id` is its
+name) with `negotiated_version="0.3"` is a caller that will break; a series appears only after its first
+request:
+
+<!-- e2e: a2a-v1-only -->
 ```bash
+SURFACE_ID="${SURFACE_ID:?set SURFACE_ID to the A2A surface}"
+SURFACE_URL="$(fabric agent-gateway surfaces get "$SURFACE_ID" -o json \
+  | jq -r '.access_point.listen_address + .access_point.route')"
+curl -sS "$SURFACE_URL/.well-known/agent-card.json" | jq -c '{name, versions: ([.protocolVersion,
+  .supportedInterfaces[]?.protocolVersion] | map(select(. != null) | split(".")[0:2] | join(".")) | unique)}'
 fabric agent-gateway metrics scrape | grep '^agent_gateway_a2a_protocol_version_total' \
   || echo 'no A2A request counted yet'
-fabric agent-gateway settings show -o json > settings-before.json
-jq '.feature_flags' settings-before.json
 ```
 
-**Change.** `feature_flags` is replaced as a whole map, and `fabric` refuses its runtime-only `terms` entry,
-so send the rest of the saved map with the flag added:
+Save the surface's settings:
 
-<!-- e2e: a2a-legacy-off -->
+<!-- e2e: a2a-v1-only -->
 ```bash
-jq '{feature_flags: ((.feature_flags // {}) | del(.terms) + {a2a_legacy_compatibility: false})}' \
-  settings-before.json > legacy-off.json
-fabric agent-gateway settings set --file legacy-off.json -o json | jq '.feature_flags'
+fabric agent-gateway surfaces get "$SURFACE_ID" -o json | jq -c '.access_point.a2a' > a2a-before.json
+cat a2a-before.json
 ```
 
-**Verify.** A request with no `A2A-Version` gets HTTP 400 `-32009`, and `data.supported` lists only `1.0`:
+**Change.**
 
-<!-- e2e: a2a-legacy-off -->
+<!-- e2e: a2a-v1-only -->
 ```bash
-curl -sS -w '\nHTTP %{http_code}\n' "${SURFACE_URL:?set SURFACE_URL to an A2A surface URL}" \
+fabric agent-gateway surfaces update "$SURFACE_ID" --set 'access_point.a2a.accepted_versions=["1.0"]' -o json \
+  | jq -c '.access_point.a2a'
+```
+
+**Verify.** A request with no `A2A-Version` gets HTTP 400 `-32009`, and `data.supported` lists only `1.0`. The
+same request in its v1.0 spelling, `GetTask` with `A2A-Version: 1.0`, is forwarded, and the agent answers it with
+its own result or error, such as `Task not found`. A `-32601` from the agent means it does not speak v1.0: undo.
+
+<!-- e2e: a2a-v1-only -->
+```bash
+SURFACE_URL="$(fabric agent-gateway surfaces get "$SURFACE_ID" -o json \
+  | jq -r '.access_point.listen_address + .access_point.route')"
+curl -sS -w '\nHTTP %{http_code}\n' "$SURFACE_URL" \
   -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"id":"probe"}}'
+curl -sS -w '\nHTTP %{http_code}\n' "$SURFACE_URL" -H 'A2A-Version: 1.0' \
+  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":2,"method":"GetTask","params":{"id":"probe"}}'
 ```
 
-**Undo.** Put the saved map back, still without `terms`; a flag that was unset before is unset again:
+**Undo.** Put the saved settings back:
 
-<!-- e2e: a2a-legacy-off -->
+<!-- e2e: a2a-v1-only -->
 ```bash
-jq '{feature_flags: ((.feature_flags // {}) | del(.terms))}' settings-before.json > settings-restore.json
-fabric agent-gateway settings set --file settings-restore.json -o json > /dev/null
+fabric agent-gateway surfaces update "$SURFACE_ID" --set "access_point.a2a=$(cat a2a-before.json)" -o json \
+  | jq -c '.access_point.a2a'
 ```
 
-**If it fails.** `settings set` refuses the file: it still carries `terms`. The request is forwarded
-instead of refused: `SURFACE_URL` names a surface whose target is `fabric://`, which skips the version check;
-use one with a direct or `a2a-proxy://` target.
+**If it fails.** 400 `the accepted A2A versions of a surface whose Target is an A2A proxy are fixed at [...]`:
+the surface's target is an A2A proxy, whose versions cannot change ([proxies.md](proxies.md)). The request is
+forwarded instead of refused: the surface you changed is not the one the caller reaches; on a `fabric://`
+surface, change the surface on the sending gateway. The undo fails because `a2a-before.json` holds `null`: the
+surface had no block, so undo with `--unset access_point.a2a`.
 
 ## Worked example: an A2A agent over HTTPS, end to end
 
@@ -629,14 +733,17 @@ fabric agent-gateway surfaces add-feature "$SURFACE_ID" payment --file x402.json
   `a2a_methods` when `a2a_method_filters` is absent; for MPP, `a2a_method_filters` only.
   Either list matches both spellings of a method, so `message/send` also charges `SendMessage` and
   `tasks/list` also charges `ListTasks`; a method outside the method table matches only as written.
-  `message_patterns` are literal substrings of the message text, not
-  regular expressions, and x402 reads that text from every part's `text`, whatever its `kind`. While
-  `message_patterns` are set, x402 writes the message text it checks to the gateway log at INFO
-  (`should_require_payment` in `src/x402/middleware.rs`), so treat that log as holding callers' messages
-  ([KI-52](known-issues.md)).
+  A request whose method the filters cannot read, a body that is not JSON, a JSON-RPC batch or one with no
+  string `method`, is charged whenever the policy has A2A method filters; a request with no body is not. Such a
+  request reaches the paywall only on a surface whose A2A validation is `off`, or on the receiving gateway of a
+  `fabric://` hop, which checks payment without the envelope check. `message_patterns` are literal substrings
+  of the message text, not regular expressions, and x402 reads that text from every part's `text`, whatever its
+  `kind`. The gateway log records the length of the text it checks, not the text, but it names each pattern
+  at INFO and whether the message matched it, so the log shows which requests held a pattern: use no pattern,
+  such as a customer's name, that must stay out of logs.
 - **When it is charged.** The paywall runs after egress vetting, the body-size limit and, on A2A, the
-  version, envelope and shape checks, so a malformed or wrong-version call is refused before it is
-  charged. It runs before a `proxy://` target answers, so MCP proxy surfaces are charged too. A
+  version, envelope and shape checks the surface runs, so a malformed or wrong-version call is refused before
+  it is charged. It runs before a `proxy://` target answers, so MCP proxy surfaces are charged too. A
   `2026-07-28` MCP request is charged later, after the surface policies.
 - **The challenge.** An unpaid x402 call gets 402 with a base64 `PAYMENT-REQUIRED` header and a body with
   `x402Version: 2` and `accepts`. The payer resends with `PAYMENT-SIGNATURE`. That is the default name:
@@ -682,9 +789,9 @@ an A2A surface the A2A proxy.
 | MCP surface policy deny of `tools/call` | 200 | JSON-RPC `-32001` "Tool '...' is not allowed by policy: ..." | In the message |
 | MCP rate limit | 429 | JSON-RPC `-32000` "Rate limit exceeded" | `data.retry_after` is a sentence; the `Retry-After` header gives whole seconds ([KI-29](known-issues.md)) |
 | MCP `2026-07-28` on `fabric://`, sending gateway's stream cap full | 429, `Retry-After: 5` | JSON-RPC `-32603` "Too many concurrent MCP requests over Fabric" | `error.message`; `Retry-After` header ([g2g.md](g2g.md)) |
-| A2A version | 400 | JSON-RPC, `id: null`, `-32009` | `error.data.requested`, `error.data.supported` |
-| A2A envelope | 400 | JSON-RPC, `id: null`, `-32700` or `-32600` | `error.message` |
-| A2A request shape | 400 | JSON-RPC, `id: null`, `-32602` "Invalid params" | `error.data.errors[]` (`field`, `message`), at most 20; `error.data.truncated` when there were more |
+| A2A version | 400 | JSON-RPC, `id: null`, `-32009` | `error.data.requested`, `error.data.supported` (the surface's accepted versions) |
+| A2A envelope, at validation `envelope` or `full` | 400 | JSON-RPC, `id: null`, `-32700` or `-32600` | `error.message` |
+| A2A request shape, at validation `full` | 400 | JSON-RPC, `id: null`, `-32602` "Invalid params" | `error.data.errors[]` (`field`, `message`), at most 20; `error.data.truncated` when there were more |
 | A2A policy deny | 403 | JSON `{"error":"Forbidden",...}` | Audit only: [policies.md](policies.md) |
 | A2A rate limit | 429 | problem+json | `detail` |
 | Delegation needs consent, either protocol | 401 | problem+json `consent-required` | `consent_required[].authorization_url`: [credentials.md](credentials.md) |
@@ -730,9 +837,12 @@ MCP rows first, then A2A, then the card and payments.
 | 500 `Invalid MCP metadata configuration` | `target.custom_metadata`, `target.response_custom_metadata` or `access_point.response_custom_metadata` is invalid; every MCP POST on the surface fails | Fix that field ([identity.md](identity.md)) |
 | 400 `Failed to read request body`, or on an MCP surface 400 `-32600` `Failed to read MCP request body` | The request body could not be read: a client disconnect or broken chunking | Retry; check the client or a proxy in front |
 | 422 `Request protocol 'mcp' does not match access point protocol 'a2a'`, or the reverse | An MCP method sent to an A2A surface, or an A2A method (either spelling) to an MCP surface | Use a surface of the caller's protocol |
-| A2A 400 `-32009` `Unsupported A2A protocol version '<v>'` | `A2A-Version` names a version the gateway does not accept; with `a2a_legacy_compatibility` off, also `0.3` or no header | Send `A2A-Version: 1.0`, or turn the flag back on for v0.3 callers |
-| A2A 400 `-32602` `Invalid params` | A required A2A field is missing, empty or of the wrong kind; `error.data.errors[]` names each, up to 20, and `error.data.truncated` marks more | Fix the named fields; a v1.0 part carries its content member and no wrong `kind` |
-| A2A 400 "Invalid JSON-RPC: missing or invalid 'method' field" | The body has no string `method` (or `jsonrpc`) | Send a full JSON-RPC envelope |
+| A2A 400 `-32009` `Unsupported A2A protocol version '<v>'` | `A2A-Version` names a version the surface does not accept; on a surface that accepts only `1.0`, such as a new A2A proxy surface, also `0.3` or no header | Send a version from `error.data.supported`, usually `A2A-Version: 1.0`, or, unless the target is an A2A proxy, add `0.3` to the surface's `access_point.a2a.accepted_versions` |
+| A2A 400 `-32602` `Invalid params` | The surface's validation is `full`, and a required A2A field is missing, empty or not allowed in the version the method's spelling belongs to; `error.data.errors[]` names each, up to 20, and `error.data.truncated` marks more | Fix the named fields, with the values of the method's version: `SendMessage` takes `ROLE_USER`, `message/send` takes `user` |
+| A2A 400 `-32600` "Invalid JSON-RPC: missing or invalid 'jsonrpc' field" or "... 'method' field" | On a surface whose validation is `envelope` or `full`, the body lacks `"jsonrpc": "2.0"` or a string `method`; a JSON-RPC batch gets the `jsonrpc` message | Send one full JSON-RPC request per call |
+| 400 `access_point.a2a.accepted_versions: unsupported version '<v>' (supported: 0.3, 1.0)`, `... must name at least one version`, `... lists '<v>' more than once` | A surface save with a bad version list | List `0.3`, `1.0` or both, each once |
+| 400 `access_point.a2a requires an A2A or AP2 Access Point` | A surface save that sends the block on an MCP or DIDComm surface | Leave `access_point.a2a` out |
+| 403 `only an appliance-wide administrator can set access_point.a2a.validation to "off"` | A personal access token with a tenant, a resource pattern or required headers set `validation` to `off` | Ask an appliance-wide administrator, or keep `envelope` |
 | A2A 200 `-32601` from the agent for `SendMessage` or `GetTask` | A v1.0 caller in front of a v0.3-only agent; the gateway does not translate | Match the caller's version to the agent's card |
 | 422 `identity_validation_failed`, slot `inbound_identity` | The caller's identity extension fails the surface's inbound identity schema | Fix the caller's extension, or the schema |
 | 422 `identity_extension_missing`, `identity_invalid_response` or `identity_validation_failed`, slot `protected_identity` or `external_identity` | The agent's reply, or its card, lacks the identity extension, is not JSON or fails the slot's schema; the agent already answered | Make the agent return a valid identity extension |
@@ -765,7 +875,6 @@ MCP rows first, then A2A, then the card and payments.
 - [KI-49](known-issues.md): the HTTP+SSE retry drops target auth and logs the body.
 - [KI-50](known-issues.md): a client's answer to an upstream's request is dropped.
 - [KI-51](known-issues.md): two `Mcp-Session-Id` headers on an SSE-wrapped `initialize`.
-- [KI-52](known-issues.md): the x402 message filter logs message text.
 - [KI-16](known-issues.md): A2A delegation with `required_for.tools` never matches.
 
-Sources: [A2A protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/a2a/), [AP2 protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/ap2/), [MCP protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/mcp/), [MPP (Machine Payments Protocol)](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/mpp/), [Glossary](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/get-started/glossary/), [Payments](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/payments/payments/), [A2A Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/a2a-proxy/), [Access Point](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/access-point/), [Payment element](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/payment/); gateway source: `src/proxy/handler.rs`, `src/mcp/request_validation.rs`, `src/mcp/modern_http.rs`, `src/mcp/upstream_versions.rs`, `src/a2a/version.rs`, `src/a2a/validation.rs`, `src/a2a/url_rewriter.rs`, `src/x402/middleware.rs`, `www/default/src/components/surface-builder/elements/payment/PaymentPanel.tsx`, `src/mcp/tool_analyzer.rs`; fabric's `src/commands.rs`, `src/features.rs`.
+Sources: [A2A protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/a2a/), [AP2 protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/ap2/), [MCP protocol](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/mcp/), [MPP (Machine Payments Protocol)](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/concepts/protocols/mpp/), [Glossary](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/get-started/glossary/), [Payments](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/payments/payments/), [A2A Proxy](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/proxies/a2a-proxy/), [Access Point](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/access-point/), [Payment element](https://docs.affinidi.com/products/affinidi-trust-fabric/agent-gateway/reference/surfaces/payment/); gateway source: `src/proxy/handler.rs`, `src/identity/handlers/surfaces.rs`, `src/surfaces/store.rs`, `src/mcp/request_validation.rs`, `src/mcp/modern_http.rs`, `src/mcp/upstream_versions.rs`, `src/a2a/version.rs`, `src/a2a/validation.rs`, `src/a2a/url_rewriter.rs`, `src/x402/middleware.rs`, `www/default/src/components/surface-builder/elements/payment/PaymentPanel.tsx`, `src/mcp/tool_analyzer.rs`, `www/default/src/components/surface-builder/elements/access-point/a2aSettings.ts`, `www/default/src/components/surface-builder/elements/access-point/AccessPointPanel.tsx`; fabric's `src/commands.rs`, `src/features.rs`.

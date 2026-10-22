@@ -1,10 +1,10 @@
 {
   "baseline": {
-    "docs_read": "2026-10-19",
+    "docs_read": "2026-10-21",
     "fabric": "0.1.2",
-    "fabric_cli": "ddce732143aa9ad0600a271992aacf14e392551f",
+    "fabric_cli": "f3a8d82ae9d9a5cd9cfeef19f0b5cfd01e951d23",
     "gateway": "1.0.0",
-    "agent_gateway": "fb173db10383615773237f9da505c5010b9888db"
+    "agent_gateway": "f62f2de5969ec8785fd1cc521423aba96f16bb95"
   },
   "pages": {
     "skills/affinidi-agent-gateway/SKILL.md": {
@@ -499,7 +499,6 @@
         "src/sts/mcp_profile.rs",
         "src/sts/throttle.rs",
         "src/surface_context/mod.rs",
-        "src/x402/middleware.rs",
         "www/default/src/components/surface-builder/elements/networking/definition.ts"
       ]
     },
@@ -620,6 +619,7 @@
         "src/surface_templates/handlers.rs",
         "src/surface_templates/types.rs",
         "src/surfaces/filesystem.rs",
+        "src/surfaces/store.rs",
         "src/trust_registry_verification/trust_check_executor.rs",
         "src/url_validation.rs",
         "src/x402/facilitator_api.rs",
@@ -719,6 +719,7 @@
         "src/config/network.rs",
         "src/config/types.rs",
         "src/identity/handlers/policy_validation.rs",
+        "src/identity/handlers/surfaces.rs",
         "src/mcp/errors.rs",
         "src/mcp/handler.rs",
         "src/mcp/initialize.rs",
@@ -758,12 +759,15 @@
         "src/source_auth/errors.rs",
         "src/source_auth/middleware.rs",
         "src/surface_context/mod.rs",
+        "src/surfaces/store.rs",
         "src/x402/delegate.rs",
         "src/x402/errors.rs",
         "src/x402/middleware.rs",
         "src/x402/mod.rs",
         "src/x402/proxy_signer.rs",
         "src/x402/verification.rs",
+        "www/default/src/components/surface-builder/elements/access-point/AccessPointPanel.tsx",
+        "www/default/src/components/surface-builder/elements/access-point/a2aSettings.ts",
         "www/default/src/components/surface-builder/elements/payment/PaymentPanel.tsx",
         "www/default/src/components/surface-builder/elements/payment/PaymentX402Fullscreen.tsx"
       ]
@@ -792,6 +796,7 @@
         "src/config/types.rs",
         "src/identity/handlers/config.rs",
         "src/identity/handlers/surface_tenancy.rs",
+        "src/identity/handlers/surfaces.rs",
         "src/identity/router.rs",
         "src/mcp/errors.rs",
         "src/mcp/handler.rs",
@@ -894,6 +899,7 @@
         "docs/CONFIGURATION_REFERENCE.md",
         "docs/CONFIGURATION_RELOAD.md",
         "docs/CREDENTIAL_DELEGATION.md",
+        "docs/DEPLOYMENT_REQUIREMENTS.md",
         "docs/FABRIC.md",
         "docs/INTEGRATIONS.md",
         "docs/MCP_METADATA.md",

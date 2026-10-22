@@ -80,9 +80,9 @@ case "$E2E_RUN_ID" in
     *[!a-z0-9]*) die "E2E_RUN_ID must be lowercase letters and digits only" ;;
 esac
 if [ -n "${E2E_LOOPBACK_TARGETS:-}" ]; then
-    loopback_re='^(mcp|a2a|idp|rest):[1-9][0-9]{0,4}(,(mcp|a2a|idp|rest):[1-9][0-9]{0,4})*$'
+    loopback_re='^(mcp|a2a|a2a1|idp|rest):[1-9][0-9]{0,4}(,(mcp|a2a|a2a1|idp|rest):[1-9][0-9]{0,4})*$'
     [[ $E2E_LOOPBACK_TARGETS =~ $loopback_re ]] \
-        || die "E2E_LOOPBACK_TARGETS must be KIND:PORT entries separated by commas, KIND one of mcp, a2a, idp or rest"
+        || die "E2E_LOOPBACK_TARGETS must be KIND:PORT entries separated by commas, KIND one of mcp, a2a, a2a1, idp or rest"
     for entry in ${E2E_LOOPBACK_TARGETS//,/ }; do
         [ "${entry#*:}" -le 65535 ] || die "E2E_LOOPBACK_TARGETS port ${entry#*:} is above 65535"
     done

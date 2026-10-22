@@ -41,6 +41,10 @@ calling gateway, not a connection point ID. The Gateways concepts page writes
 point ID with 400 `Gateway reference is not accessible`. The second is the remote
 surface's `config_id` from discovery.
 
+On an A2A route, the sending gateway applies its own surface's `access_point.a2a`, the accepted versions and the
+validation level, before the request is paid for or sent; the receiving gateway does not check again, and its
+surface's `access_point.a2a` does not apply to fabric requests ([protocols.md](protocols.md#a2a-on-the-wire)).
+
 `fabric` covers only the CRUD half. `fabric agent-gateway connections create` writes a bare gateway record with no
 handshake, and such a record never carries traffic. The handshake, approval,
 ping, discovery and publishing go through `fabric agent-gateway api` ([fabric.md](fabric.md)).

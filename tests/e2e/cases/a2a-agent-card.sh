@@ -1,7 +1,7 @@
 # The A2A agent card and the JSON-RPC relay, from references/protocols.md "A2A on the wire".
 # Blocks: 1 create the surface, 2 fetch the card at agent-card.json and agent.json, 3 message/send,
 # 4 tasks/get for an unknown task, 5 a body without a method, 6 the card's media type, 7 an unsupported
-# A2A-Version, 8 a malformed v1.0 message, 9 a well-formed v1.0 SendMessage.
+# A2A-Version, 8 turn on the request-shape check, 9 a malformed v1.0 message, 10 a well-formed v1.0 SendMessage.
 
 setup() {
     start_target a2a
@@ -37,14 +37,16 @@ PY
     expect_block 6 '^no header: application/json'
     expect_block 6 '^A2A-Version 1.0: application/a2a\+json'
     expect_block 7 '^HTTP 400$'
-    expect_json 7 'doc["error"]["code"] == -32009 and doc["id"] is None and doc["error"]["data"]["requested"] == "9.9" and "1.0" in doc["error"]["data"]["supported"]' \
-        "an unsupported A2A-Version gets -32009 naming the requested and supported versions"
-    expect_block 8 '^HTTP 400$'
-    expect_json 8 'doc["error"]["code"] == -32602 and doc["id"] is None and {e["field"] for e in doc["error"]["data"]["errors"]} == {"params.message.messageId", "params.message.parts[0].kind"}' \
-        "a malformed v1.0 message gets -32602 with one entry per bad field"
-    expect_block 9 '^HTTP 200$'
-    expect_json 9 'doc["error"]["code"] == -32601 and doc["id"] == "req-6"' \
-        "a v1.0 SendMessage reaches the v0.3-only agent, which answers with its own error"
+    expect_json 7 'doc["error"]["code"] == -32009 and doc["id"] is None and doc["error"]["data"]["requested"] == "9.9" and doc["error"]["data"]["supported"] == ["0.3", "1.0"]' \
+        "an unsupported A2A-Version gets -32009 naming the requested version and the surface's accepted versions"
+    expect_json 8 'doc == {"accepted_versions": ["0.3", "1.0"], "validation": "full"}' \
+        "the surface checks the request shape and still accepts both versions"
+    expect_block 9 '^HTTP 400$'
+    expect_json 9 'doc["error"]["code"] == -32602 and doc["id"] is None and {e["field"] for e in doc["error"]["data"]["errors"]} == {"params.message.messageId", "params.message.role"} and any("in A2A 1.0 (SendMessage)" in e["message"] for e in doc["error"]["data"]["errors"])' \
+        "a malformed v1.0 message gets -32602 with one entry per bad field, judged by the A2A 1.0 rules"
+    expect_block 10 '^HTTP 200$'
+    expect_json 10 'doc["error"]["code"] == -32601 and doc["id"] == "req-6"' \
+        "a well-formed v1.0 SendMessage passes the shape check and reaches the v0.3-only agent, which answers with its own error"
 
     target_requests A2A_URL > "$E2E_CASE_DIR/requests.json"
     "$PYTHON" - "$E2E_CASE_DIR/requests.json" <<'PY' || fail "the agent saw the wrong requests" "$E2E_CASE_DIR/requests.json"
